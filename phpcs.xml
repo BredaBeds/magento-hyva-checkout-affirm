@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<ruleset name="package">
+    <description>Magento 2 coding standard for this package.</description>
+    <file>src</file>
+    <file>Test/Unit</file>
+    <arg name="extensions" value="php,phtml"/>
+    <arg name="colors"/>
+    <arg value="sp"/>
+    <!-- Warnings (mostly docblocks on fully typed members) are reported but do not fail the run; errors do. -->
+    <config name="ignore_warnings_on_exit" value="1"/>
+    <rule ref="Magento2"/>
+</ruleset>

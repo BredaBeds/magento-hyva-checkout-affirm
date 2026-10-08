@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright (c) 2026 Breda Beds. Licensed under the MIT licence; see LICENSE.
+ */
+-->
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <body>
+        <referenceContainer name="content">
+            <block class="Magento\Backend\Block\Template" name="hyva.checkoutaffirm.attempt.notice" template="Hyva_CheckoutAffirm::attempt/notice.phtml"/>
+            <uiComponent name="hyva_affirm_attempt_listing"/>
+        </referenceContainer>
+    </body>
+</page>

@@ -1,0 +1,26 @@
+<?php declare(strict_types=1);
+/**
+ * Copyright (c) 2026 Breda Beds. Licensed under the MIT licence; see LICENSE.
+ *
+ * @var \Magento\Backend\Block\Template $block
+ * @var \Magento\Framework\Escaper $escaper
+ */
+?>
+<div class="message message-notice">
+    <p><?= $escaper->escapeHtml(__(
+        'Listed here: Affirm checkout attempts that are still open (until they expire) or block their cart.'
+        . ' An "Uncertain" attempt may hold an Affirm authorization without an order; the cart stays blocked'
+        . ' for other payment methods until the attempt is resolved.'
+    )) ?></p>
+    <p><?= $escaper->escapeHtml(__(
+        'To resolve it, look up the payment in the Affirm merchant dashboard by the reserved order number or the'
+        . ' Affirm transaction ID. If an order exists, resolve the attempt as placed with that order number;'
+        . ' otherwise void the authorization at Affirm and resolve the attempt as voided:'
+    )) ?></p>
+    <p>
+        <code>bin/magento hyva:affirm:attempt:list</code><br>
+        <code>bin/magento hyva:affirm:attempt:resolve &lt;attempt-id&gt;
+            --outcome=placed --order=&lt;order-number&gt;</code><br>
+        <code>bin/magento hyva:affirm:attempt:resolve &lt;attempt-id&gt; --outcome=voided</code>
+    </p>
+</div>

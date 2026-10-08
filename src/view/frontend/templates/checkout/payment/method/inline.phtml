@@ -1,0 +1,14 @@
+<?php declare(strict_types=1);
+/**
+ * Copyright (c) 2026 Breda Beds. Licensed under the MIT licence; see LICENSE.
+ *
+ * Container of Affirm's inline checkout widget ("edu"). affirm.js renders into it, so Magewire leaves the subtree
+ * alone (wire:ignore); the hyvaCheckoutAffirmGateway component re-renders the widget when the cart changes.
+ *
+ * @var \Magento\Framework\View\Element\Template $block
+ * @var \Magento\Framework\Escaper $escaper
+ */
+?>
+<div wire:ignore class="hyva-affirm-inline w-full">
+    <div id="<?= $escaper->escapeHtmlAttr(\Hyva\CheckoutAffirm\ViewModel\Method::INLINE_CONTAINER_ID) ?>"></div>
+</div>

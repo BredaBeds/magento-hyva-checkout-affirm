@@ -1,0 +1,12 @@
+# PHPStan configuration. On a Magento installation run from the Magento root:
+#   php vendor/bin/phpstan analyse -c <package>/phpstan.neon.dist --autoload-file=app/autoload.php <package>/src
+# In CI, Test/ci/phpstan.neon includes this file and adds the harness autoloader, the Hyvä test doubles and the
+# bitexpert/phpstan-magento extension (see Test/ci/README.md).
+parameters:
+    level: 6
+    tmpDir: .phpstan-cache
+    treatPhpDocTypesAsCertain: false
+    reportUnmatchedIgnoredErrors: false
+    ignoreErrors:
+        # Magento generates factories, proxies and interceptors at compile time.
+        - '#(Factory|\\Proxy)(\\\\)?.* not found#'

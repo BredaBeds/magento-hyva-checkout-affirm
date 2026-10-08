@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  syntax:
+    name: PHP ${{ matrix.php }} syntax
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ["8.1", "8.2", "8.3", "8.4", "8.5"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+          tools: none
+      - name: Lint PHP and PHTML files
+        run: |
+          find src Test -path Test/ci/vendor -prune -o -path Test/ci/var -prune -o \
+            \( -name '*.php' -o -name '*.phtml' \) -print0 | xargs -0 -n1 php -l
+
+  quality:
+    name: Static analysis and unit tests (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ["8.1", "8.3"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+          extensions: bcmath, ftp, gd, intl, soap, sodium, zip, pdo_mysql, sockets, xsl
+          tools: composer:v2
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer
+          key: composer-${{ matrix.php }}-${{ hashFiles('Test/ci/composer.json') }}
+          restore-keys: composer-${{ matrix.php }}-
+      # Magento Open Source from the Mage-OS mirror (no credentials), Affirm from Packagist, no Hyvä packages:
+      # the Hyvä and Magewire classes the module uses are MIT test doubles in Test/ci/stubs.
+      - name: Install the CI harness
+        working-directory: Test/ci
+        run: composer install --no-interaction --no-progress --prefer-dist
+      - name: php-cs-fixer
+        run: Test/ci/vendor/bin/php-cs-fixer fix --dry-run --diff --using-cache=no --config=.php-cs-fixer.dist.php
+      - name: PHPCS (Magento2 standard)
+        run: Test/ci/vendor/bin/phpcs --standard=phpcs.xml
+      - name: PHPStan
+        run: Test/ci/vendor/bin/phpstan analyse -c Test/ci/phpstan.neon --no-progress
+      - name: Unit tests
+        run: Test/ci/vendor/bin/phpunit -c phpunit.xml.dist
+
+  js:
+    name: JavaScript unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: node --test Test/js/*.test.mjs

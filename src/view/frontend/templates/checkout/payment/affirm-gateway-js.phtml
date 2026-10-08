@@ -1,0 +1,434 @@
+<?php declare(strict_types=1);
+/**
+ * Copyright (c) 2026 Breda Beds. Licensed under the MIT licence; see LICENSE.
+ *
+ * Affirm in Hyvä Checkout's payment API (registerMethod) and the hyvaCheckoutAffirmGateway Alpine component of the
+ * method body. Rendered once per checkout page in hyva.checkout.api-v1.payment-methods.
+ *
+ * Place Order: prepareCheckout() on the Magewire component, then Affirm's modal (the token goes to Hyvä's
+ * "payment" storage group and Hyvä's own placement runs the server confirmation) or Affirm's redirect (the
+ * return controller confirms). Placement is never retried; only affirm.js may be requested again.
+ *
+ * @var \Magento\Framework\View\Element\Template $block
+ * @var \Magento\Framework\Escaper $escaper
+ * @var \Hyva\Theme\ViewModel\HyvaCsp $hyvaCsp
+ */
+$config = [
+    'code' => \Hyva\CheckoutAffirm\Magewire\Payment\Method\AffirmGateway::METHOD_CODE,
+    'componentId' => \Hyva\CheckoutAffirm\Magewire\Payment\Method\AffirmGateway::COMPONENT_ID,
+    'containerId' => \Hyva\CheckoutAffirm\ViewModel\Method::INLINE_CONTAINER_ID,
+    'storage' => [
+        'group' => 'payment',
+        'token' => \Hyva\CheckoutAffirm\Model\Magewire\Payment\PlaceOrderService::KEY_CHECKOUT_TOKEN,
+        'attempt' => \Hyva\CheckoutAffirm\Model\Magewire\Payment\PlaceOrderService::KEY_ATTEMPT_ID,
+    ],
+    'messages' => [
+        'unavailable' => (string) __(
+            'Affirm is not available right now. Please try again or choose another payment method.'
+        ),
+        'sdk' => (string) __('Affirm could not be loaded. Please check your connection and try again.'),
+        'cancelled' => (string) __('You closed Affirm before finishing. Your order has not been placed.'),
+        'failed' => (string) __(
+            'Your Affirm payment was not completed. Please try again or use another payment method.'
+        ),
+        'validation' => (string) __('Affirm could not accept the checkout details. Please check them and try again.'),
+        'storage' => (string) __(
+            'Your browser blocked the checkout storage. Please allow it and place the order again.'
+        ),
+    ],
+];
+$json = json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+?>
+<script>
+(() => {
+    'use strict';
+    if (typeof hyvaCheckout === 'undefined' || !hyvaCheckout.payment
+        || typeof hyvaCheckout.payment.registerMethod !== 'function') {
+        return;
+    }
+
+    const config = <?= /* @noEscape */ $json ?>;
+    const messages = config.messages;
+    // Bursts of cart events are coalesced into one widget render.
+    const INLINE_DELAY = 150;
+    // Redirect mode waits for the navigation to Affirm; this long without leaving, the shopper gets the button back.
+    const REDIRECT_TIMEOUT = 60000;
+
+    /* bridge:start */
+    // Magewire 1 (Livewire 2) and Magewire 3 both return the component's $wire proxy from Magewire.find(): actions
+    // are called as methods and public properties read as properties. Magewire 1 throws for a component that is
+    // not on the page and answers an unknown property with a server-call function, which reads never call.
+    const createWireBridge = (getMagewire, componentId) => {
+        const find = () => {
+            try {
+                const magewire = getMagewire();
+                return (magewire && typeof magewire.find === 'function' && magewire.find(componentId)) || null;
+            } catch (e) {
+                return null;
+            }
+        };
+        const read = (wire, property) => {
+            let value = wire[property];
+            if (typeof value === 'function') {
+                value = typeof wire.get === 'function' ? wire.get(property) : undefined;
+            }
+            return value === undefined || typeof value === 'function' ? null : value;
+        };
+        const call = async (method) => {
+            const wire = find();
+            if (!wire || typeof wire[method] !== 'function') {
+                throw new Error(`Magewire component "${componentId}" is not available.`);
+            }
+            await wire[method]();
+            return (property) => read(wire, property);
+        };
+        return {find, read, call};
+    };
+    /* bridge:end */
+
+    const bridge = createWireBridge(() => window.Magewire, config.componentId);
+    const components = new Set();
+    let active = false;
+
+    const notify = (text, type) => hyvaCheckout.payment.dispatchExceptionMessage(text, type || 'error');
+    const clearNotice = () => hyvaCheckout.payment.dispatchSuccessMessage('');
+
+    // Affirm's modal takes the focus; give it back to the control that started the payment once Hyvä has
+    // re-enabled it, unless the shopper already moved on.
+    const restoreFocus = (element) => {
+        if (!element || element === document.body || typeof element.focus !== 'function') {
+            return;
+        }
+        let tries = 0;
+        const attempt = () => {
+            if (!element.isConnected) {
+                return;
+            }
+            if (element.disabled && tries++ < 40) {
+                setTimeout(attempt, 50);
+                return;
+            }
+            const current = document.activeElement;
+            if (!element.disabled && (!current || current === document.body)) {
+                element.focus();
+            }
+        };
+        setTimeout(attempt, 0);
+    };
+
+    // Shows the reason in the payment messenger (role="alert") and returns the error placeOrder() rejects with.
+    const failure = (text, focus, type) => {
+        notify(text, type);
+        restoreFocus(focus);
+        return new Error(text);
+    };
+
+    const setStorage = (key, value) => hyvaCheckout.storage.setValue(key, value, config.storage.group);
+    const clearStorage = async () => {
+        try {
+            await setStorage(config.storage.token, null);
+            await setStorage(config.storage.attempt, null);
+        } catch (e) {
+            // Storage is unavailable, so nothing was stored either.
+        }
+    };
+
+    const loadAffirm = () => (window.hyvaAffirm && typeof window.hyvaAffirm.load === 'function'
+        ? window.hyvaAffirm.load()
+        : Promise.reject(new Error('The Affirm loader is not on the page.')));
+
+    // affirm.checkout() merges into the object it holds: reset first so nothing of an earlier object survives.
+    const setCheckout = (affirm, checkout) => {
+        if (typeof affirm.checkout.reset === 'function') {
+            affirm.checkout.reset();
+        }
+        affirm.checkout(checkout);
+    };
+
+    const plainObject = (value) => {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            return null;
+        }
+        return JSON.parse(JSON.stringify(value));
+    };
+
+    const parseObject = (json) => {
+        try {
+            return plainObject(JSON.parse(json));
+        } catch (e) {
+            return null;
+        }
+    };
+
+    // Resolves with the checkout token of a confirmed modal checkout; rejects when the shopper does not finish.
+    const openModal = (affirm, checkout, focus) => new Promise((resolve, reject) => {
+        let settled = false;
+        const fail = (text, type) => {
+            if (!settled) {
+                settled = true;
+                reject(failure(text, focus, type));
+            }
+        };
+        try {
+            setCheckout(affirm, checkout);
+            affirm.checkout.open({
+                onSuccess: (result) => {
+                    const token = result ? (result.checkout_token ?? result.checkout_id) : null;
+                    if (typeof token !== 'string' || token === '') {
+                        fail(messages.failed);
+                    } else if (!settled) {
+                        settled = true;
+                        resolve(token);
+                    }
+                },
+                onFail: (result) => fail(
+                    result && result.reason === 'canceled' ? messages.cancelled : messages.failed,
+                    'warning'
+                ),
+                onValidationError: () => fail(messages.validation),
+            });
+        } catch (e) {
+            fail(messages.sdk);
+        }
+    });
+
+    // Navigates to Affirm. Settles only when the shopper stays: Affirm reports a problem, the page comes back from
+    // the back-forward cache, or the browser has not left in time. Until then Place Order stays busy.
+    const openRedirect = (affirm, checkout, focus) => new Promise((resolve, reject) => {
+        let settled = false;
+        let leaving = false;
+        let timer = null;
+        const onPageHide = () => {
+            leaving = true;
+        };
+        const onPageShow = (event) => {
+            if (event.persisted) {
+                stop(messages.failed, 'warning');
+            }
+        };
+        const stop = (text, type) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            clearTimeout(timer);
+            window.removeEventListener('pagehide', onPageHide);
+            window.removeEventListener('pageshow', onPageShow);
+            reject(failure(text, focus, type));
+        };
+        window.addEventListener('pagehide', onPageHide);
+        window.addEventListener('pageshow', onPageShow);
+        timer = setTimeout(() => {
+            if (!leaving) {
+                stop(messages.unavailable);
+            }
+        }, REDIRECT_TIMEOUT);
+        try {
+            setCheckout(affirm, checkout);
+            const callbacks = {
+                onFail: () => stop(messages.failed, 'warning'),
+                onValidationError: () => stop(messages.validation),
+            };
+            if (typeof affirm.checkout.open === 'function') {
+                affirm.checkout.open(callbacks);
+            } else {
+                affirm.checkout.post(callbacks);
+            }
+        } catch (e) {
+            stop(messages.sdk);
+        }
+    });
+
+    // Hyvä's placement with the stored token. The server already reports its own failures, so none is shown here;
+    // before Hyvä Checkout 1.3.14 fallback() resolved on failure, which the error event still reveals.
+    const submit = async (fallback, focus) => {
+        if (typeof fallback !== 'function') {
+            await clearStorage();
+            throw failure(messages.unavailable, focus);
+        }
+        const errorEvent = `order:place:${config.code}:error`;
+        let error = null;
+        const onError = () => {
+            error = error || new Error('The order could not be placed.');
+        };
+        window.addEventListener(errorEvent, onError);
+        try {
+            await fallback();
+        } catch (e) {
+            error = e;
+        } finally {
+            window.removeEventListener(errorEvent, onError);
+        }
+        if (error) {
+            await clearStorage();
+            throw error;
+        }
+    };
+
+    hyvaCheckout.payment.registerMethod({
+        code: config.code,
+        method: {
+            async initialize() {
+                active = true;
+                loadAffirm().catch(() => {});
+                components.forEach((component) => component.start());
+            },
+
+            async uninitialize() {
+                active = false;
+                components.forEach((component) => component.stop());
+                clearNotice();
+                await clearStorage();
+            },
+
+            async placeOrder({fallback}) {
+                const focus = document.activeElement;
+                clearNotice();
+                await clearStorage();
+
+                let read;
+                try {
+                    read = await bridge.call('prepareCheckout');
+                } catch (e) {
+                    throw failure(messages.unavailable, focus);
+                }
+                const errorMessage = read('errorMessage');
+                if (errorMessage) {
+                    throw failure(String(errorMessage), focus);
+                }
+                const checkout = plainObject(read('checkout'));
+                const attemptId = read('attemptId');
+                if (!checkout || typeof attemptId !== 'string' || attemptId === '') {
+                    throw failure(messages.unavailable, focus);
+                }
+
+                let affirm;
+                try {
+                    affirm = await loadAffirm();
+                } catch (e) {
+                    throw failure(messages.sdk, focus);
+                }
+
+                if (read('mode') === 'redirect') {
+                    return openRedirect(affirm, checkout, focus);
+                }
+
+                const token = await openModal(affirm, checkout, focus);
+                try {
+                    await setStorage(config.storage.token, token);
+                    await setStorage(config.storage.attempt, attemptId);
+                } catch (e) {
+                    await clearStorage();
+                    throw failure(messages.storage, focus);
+                }
+                return submit(fallback, focus);
+            },
+        },
+    });
+
+    // Method body: renders Affirm's inline widget from the root's data-inline-* attributes, which Magewire updates
+    // after every rebuild. Bursts are coalesced and a version older than the one shown is ignored.
+    const gateway = () => {
+        let root = null;
+        let observer = null;
+        let timer = null;
+        let rendered = 0;
+        let requested = false;
+
+        const version = () => {
+            const value = Number.parseInt(root.dataset.inlineVersion || '0', 10);
+            return Number.isFinite(value) ? value : 0;
+        };
+        const container = () => {
+            const element = document.getElementById(config.containerId);
+            return element && root.contains(element) ? element : null;
+        };
+        const render = async () => {
+            const target = version();
+            if (!observer || target <= rendered) {
+                return;
+            }
+            const checkout = parseObject(root.dataset.inlineCheckout || '');
+            if (!checkout) {
+                rendered = target;
+                const element = container();
+                if (element) {
+                    element.replaceChildren();
+                }
+                return;
+            }
+            let affirm;
+            try {
+                affirm = await loadAffirm();
+            } catch (e) {
+                return;
+            }
+            // A newer version arrived while affirm.js loaded (it renders itself), or the widget was stopped.
+            if (!observer || target !== version() || target <= rendered || !container()) {
+                return;
+            }
+            rendered = target;
+            setCheckout(affirm, checkout);
+            affirm.checkout.inline({merchant: {inline_container: config.containerId}});
+        };
+        const schedule = () => {
+            clearTimeout(timer);
+            timer = setTimeout(() => render().catch(() => {}), INLINE_DELAY);
+        };
+        const component = {
+            start() {
+                if (!root || root.dataset.edu !== '1') {
+                    return;
+                }
+                if (!observer) {
+                    observer = new MutationObserver(schedule);
+                    observer.observe(root, {attributes: true, attributeFilter: ['data-inline-version']});
+                }
+                if (version() > rendered) {
+                    schedule();
+                } else if (version() === 0 && !requested) {
+                    requested = true;
+                    bridge.call('prepareInline').catch(() => {
+                        requested = false;
+                    });
+                }
+            },
+            stop() {
+                clearTimeout(timer);
+                if (observer) {
+                    observer.disconnect();
+                    observer = null;
+                }
+                const element = root ? container() : null;
+                if (element) {
+                    element.replaceChildren();
+                }
+                rendered = 0;
+                requested = false;
+            },
+        };
+
+        return {
+            init() {
+                root = this.$el;
+                components.add(component);
+                if (active) {
+                    component.start();
+                }
+            },
+            destroy() {
+                components.delete(component);
+                component.stop();
+            },
+        };
+    };
+
+    const registerComponent = () => window.Alpine.data('hyvaCheckoutAffirmGateway', gateway);
+    if (window.Alpine && typeof window.Alpine.data === 'function') {
+        registerComponent();
+    } else {
+        window.addEventListener('alpine:init', registerComponent, {once: true});
+    }
+})();
+</script>
+<?php isset($hyvaCsp) && $hyvaCsp->registerInlineScript() ?>

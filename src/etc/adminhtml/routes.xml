@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright (c) 2026 Breda Beds. Licensed under the MIT licence; see LICENSE.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:App/etc/routes.xsd">
+    <router id="admin">
+        <route id="hyva_checkoutaffirm" frontName="hyva_checkoutaffirm">
+            <module name="Hyva_CheckoutAffirm" before="Magento_Backend"/>
+        </route>
+    </router>
+</config>

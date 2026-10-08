@@ -1,0 +1,134 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright (c) 2026 Breda Beds. Licensed under the MIT licence; see LICENSE.
+ */
+-->
+<!-- Read-only reconciliation view: no mass actions and no full-text search. Attempts are resolved with
+     bin/magento hyva:affirm:attempt:resolve after checking the payment at Affirm. -->
+<listing xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Ui:etc/ui_configuration.xsd">
+    <argument name="data" xsi:type="array">
+        <item name="js_config" xsi:type="array">
+            <item name="provider" xsi:type="string">hyva_affirm_attempt_listing.hyva_affirm_attempt_listing_data_source</item>
+        </item>
+    </argument>
+    <settings>
+        <spinner>hyva_affirm_attempt_columns</spinner>
+        <deps>
+            <dep>hyva_affirm_attempt_listing.hyva_affirm_attempt_listing_data_source</dep>
+        </deps>
+    </settings>
+
+    <dataSource name="hyva_affirm_attempt_listing_data_source" component="Magento_Ui/js/grid/provider">
+        <settings>
+            <storageConfig>
+                <param name="indexField" xsi:type="string">attempt_id</param>
+            </storageConfig>
+            <updateUrl path="mui/index/render"/>
+        </settings>
+        <aclResource>Hyva_CheckoutAffirm::attempts</aclResource>
+        <dataProvider class="Magento\Framework\View\Element\UiComponent\DataProvider\DataProvider" name="hyva_affirm_attempt_listing_data_source">
+            <settings>
+                <requestFieldName>id</requestFieldName>
+                <primaryFieldName>attempt_id</primaryFieldName>
+            </settings>
+        </dataProvider>
+    </dataSource>
+
+    <listingToolbar name="listing_top">
+        <settings>
+            <sticky>true</sticky>
+        </settings>
+        <bookmark name="bookmarks"/>
+        <columnsControls name="columns_controls"/>
+        <filters name="listing_filters"/>
+        <paging name="listing_paging"/>
+    </listingToolbar>
+
+    <columns name="hyva_affirm_attempt_columns">
+        <column name="attempt_ref" class="Hyva\CheckoutAffirm\Ui\Component\Listing\Column\AttemptReference" sortOrder="10">
+            <settings>
+                <filter>text</filter>
+                <label translate="true">Attempt</label>
+                <sortable>false</sortable>
+            </settings>
+        </column>
+        <column name="state" component="Magento_Ui/js/grid/columns/select" sortOrder="20">
+            <settings>
+                <options class="Hyva\CheckoutAffirm\Ui\Component\Listing\Column\StateOptions"/>
+                <filter>select</filter>
+                <dataType>select</dataType>
+                <label translate="true">State</label>
+            </settings>
+        </column>
+        <column name="store_id" sortOrder="30">
+            <settings>
+                <filter>text</filter>
+                <label translate="true">Store ID</label>
+                <visible>false</visible>
+            </settings>
+        </column>
+        <column name="quote_id" sortOrder="40">
+            <settings>
+                <filter>text</filter>
+                <label translate="true">Quote ID</label>
+            </settings>
+        </column>
+        <column name="reserved_increment_id" sortOrder="50">
+            <settings>
+                <filter>text</filter>
+                <label translate="true">Reserved Order #</label>
+            </settings>
+        </column>
+        <column name="order_increment_id" sortOrder="60">
+            <settings>
+                <filter>text</filter>
+                <label translate="true">Order #</label>
+            </settings>
+        </column>
+        <column name="grand_total_cents" class="Hyva\CheckoutAffirm\Ui\Component\Listing\Column\GrandTotal" sortOrder="70">
+            <settings>
+                <label translate="true">Grand Total</label>
+            </settings>
+        </column>
+        <column name="currency" sortOrder="80">
+            <settings>
+                <filter>text</filter>
+                <label translate="true">Currency</label>
+            </settings>
+        </column>
+        <column name="failure_reason" sortOrder="90">
+            <settings>
+                <filter>text</filter>
+                <label translate="true">Reason</label>
+            </settings>
+        </column>
+        <column name="provider_transaction_id" sortOrder="100">
+            <settings>
+                <filter>text</filter>
+                <label translate="true">Affirm Transaction ID</label>
+            </settings>
+        </column>
+        <column name="created_at" class="Magento\Ui\Component\Listing\Columns\Date" component="Magento_Ui/js/grid/columns/date" sortOrder="110">
+            <settings>
+                <filter>dateRange</filter>
+                <dataType>date</dataType>
+                <label translate="true">Created</label>
+                <sorting>desc</sorting>
+            </settings>
+        </column>
+        <column name="updated_at" class="Magento\Ui\Component\Listing\Columns\Date" component="Magento_Ui/js/grid/columns/date" sortOrder="120">
+            <settings>
+                <filter>dateRange</filter>
+                <dataType>date</dataType>
+                <label translate="true">Updated</label>
+            </settings>
+        </column>
+        <column name="expires_at" class="Magento\Ui\Component\Listing\Columns\Date" component="Magento_Ui/js/grid/columns/date" sortOrder="130">
+            <settings>
+                <dataType>date</dataType>
+                <label translate="true">Expires</label>
+            </settings>
+        </column>
+    </columns>
+</listing>

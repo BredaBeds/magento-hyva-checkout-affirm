@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright (c) 2026 Breda Beds. Licensed under the MIT licence; see LICENSE.
+ */
+-->
+<schema xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Setup/Declaration/Schema/etc/schema.xsd">
+    <!-- No foreign keys: rows must outlive purged quotes and are kept for reconciliation. -->
+    <table name="hyva_affirm_checkout_attempt" resource="default" engine="innodb" comment="Affirm Checkout Attempts (Hyva Checkout)">
+        <column xsi:type="varchar" name="attempt_id" nullable="false" length="64" comment="Attempt ID (random, 64 hex chars)"/>
+        <column xsi:type="varchar" name="owner_key_hash" nullable="false" length="64" comment="SHA-256 of the checkout session owner key"/>
+        <column xsi:type="int" name="quote_id" unsigned="true" nullable="false" comment="Quote ID"/>
+        <column xsi:type="smallint" name="store_id" unsigned="true" nullable="false" comment="Store ID"/>
+        <column xsi:type="int" name="customer_id" unsigned="true" nullable="true" comment="Customer ID"/>
+        <column xsi:type="varchar" name="reserved_increment_id" nullable="false" length="50" comment="Reserved order increment ID"/>
+        <column xsi:type="varchar" name="currency" nullable="false" length="3" comment="Quote currency code"/>
+        <column xsi:type="int" name="grand_total_cents" nullable="false" comment="Expected grand total in cents"/>
+        <column xsi:type="varchar" name="payment_method" nullable="false" length="64" default="affirm_gateway" comment="Payment method code"/>
+        <column xsi:type="varchar" name="snapshot_hash" nullable="false" length="64" comment="SHA-256 of the cart snapshot"/>
+        <column xsi:type="varchar" name="state" nullable="false" length="16" comment="Attempt state"/>
+        <column xsi:type="varchar" name="token_hash" nullable="true" length="64" comment="SHA-256 of the checkout token"/>
+        <column xsi:type="varchar" name="order_increment_id" nullable="true" length="50" comment="Order increment ID"/>
+        <column xsi:type="int" name="order_id" unsigned="true" nullable="true" comment="Order ID"/>
+        <column xsi:type="varchar" name="failure_reason" nullable="true" length="255" comment="Failure or resolution reason code"/>
+        <column xsi:type="varchar" name="provider_transaction_id" nullable="true" length="64" comment="Affirm transaction ID"/>
+        <column xsi:type="timestamp" name="created_at" on_update="false" nullable="false" default="CURRENT_TIMESTAMP" comment="Created At"/>
+        <column xsi:type="timestamp" name="updated_at" on_update="true" nullable="false" default="CURRENT_TIMESTAMP" comment="Updated At"/>
+        <column xsi:type="timestamp" name="expires_at" on_update="false" nullable="false" default="CURRENT_TIMESTAMP" comment="Expires At (always set on insert)"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="attempt_id"/>
+        </constraint>
+        <index referenceId="HYVA_AFFIRM_CHECKOUT_ATTEMPT_QUOTE_ID_STATE" indexType="btree">
+            <column name="quote_id"/>
+            <column name="state"/>
+        </index>
+        <index referenceId="HYVA_AFFIRM_CHECKOUT_ATTEMPT_STATE_UPDATED_AT" indexType="btree">
+            <column name="state"/>
+            <column name="updated_at"/>
+        </index>
+        <index referenceId="HYVA_AFFIRM_CHECKOUT_ATTEMPT_RESERVED_INCREMENT_ID_STORE_ID" indexType="btree">
+            <column name="reserved_increment_id"/>
+            <column name="store_id"/>
+        </index>
+    </table>
+</schema>

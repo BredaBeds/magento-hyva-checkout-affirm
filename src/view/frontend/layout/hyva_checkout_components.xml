@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright (c) 2026 Breda Beds. Licensed under the MIT licence; see LICENSE.
+ */
+-->
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <body>
+        <referenceBlock name="checkout.payment.methods">
+            <!-- Hyvä renders the child whose alias is the payment code, for the selected method only. -->
+            <block name="checkout.payment.method.affirm_gateway"
+                   as="affirm_gateway"
+                   template="Hyva_CheckoutAffirm::checkout/payment/method/affirm-gateway.phtml">
+                <arguments>
+                    <argument name="magewire" xsi:type="object">Hyva\CheckoutAffirm\Magewire\Payment\Method\AffirmGateway</argument>
+                    <argument name="metadata" xsi:type="array">
+                        <item name="icon" xsi:type="array">
+                            <item name="src" xsi:type="string">Hyva_CheckoutAffirm::images/affirm.svg</item>
+                            <item name="attributes" xsi:type="array">
+                                <item name="width" xsi:type="string">66</item>
+                                <item name="height" xsi:type="string">20</item>
+                                <item name="alt" xsi:type="string">Affirm</item>
+                            </item>
+                        </item>
+                    </argument>
+                </arguments>
+
+                <block name="checkout.payment.method.affirm_gateway.inline"
+                       as="inline"
+                       template="Hyva_CheckoutAffirm::checkout/payment/method/inline.phtml"/>
+            </block>
+        </referenceBlock>
+    </body>
+</page>

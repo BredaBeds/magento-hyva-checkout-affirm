@@ -1,0 +1,30 @@
+<?php declare(strict_types=1);
+/**
+ * Copyright (c) 2026 Breda Beds. Licensed under the MIT licence; see LICENSE.
+ *
+ * Forces fresh customer section data (minicart) on the success page. A return from Affirm by GET does not renew
+ * private_content_version, so the cached cart could still show the ordered items. Hyvä's documented forced
+ * refresh: remove mage-cache-sessid and dispatch reload-customer-section-data.
+ *
+ * @var \Magento\Framework\View\Element\Template $block
+ * @var \Hyva\Theme\ViewModel\HyvaCsp|null $hyvaCsp
+ */
+?>
+<script>
+    (() => {
+        if (window.hyva && typeof window.hyva.setCookie === 'function') {
+            window.hyva.setCookie('mage-cache-sessid', '', -1, true);
+        } else {
+            document.cookie = 'mage-cache-sessid=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+        }
+        // While the document is still parsing, Hyvä's loader has not run yet (it waits for Alpine) and treats the
+        // missing cookie as stale data; dispatching now would load before the components listen.
+        if (document.readyState === 'loading') {
+            return;
+        }
+        window.dispatchEvent(new CustomEvent('reload-customer-section-data'));
+    })();
+</script>
+<?php if (isset($hyvaCsp)) {
+    $hyvaCsp->registerInlineScript();
+} ?>

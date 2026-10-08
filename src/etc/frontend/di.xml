@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright (c) 2026 Breda Beds. Licensed under the MIT licence; see LICENSE.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+    <type name="Hyva\Checkout\Model\Magewire\Payment\PlaceOrderServiceProvider">
+        <arguments>
+            <argument name="placeOrderServiceList" xsi:type="array">
+                <item name="affirm_gateway" xsi:type="object">Hyva\CheckoutAffirm\Model\Magewire\Payment\PlaceOrderService</item>
+            </argument>
+        </arguments>
+    </type>
+
+    <!-- Marks the attempt "authorizing" right before Affirm's authorize call and records the transaction id. -->
+    <type name="Astound\Affirm\Gateway\Http\Client\ClientService">
+        <plugin name="hyva_affirm_attempt_tracker" type="Hyva\CheckoutAffirm\Plugin\Affirm\ClientServiceAttemptTracker"/>
+    </type>
+
+    <!-- Session proxies: these classes are built before the session may be started. -->
+    <type name="Hyva\CheckoutAffirm\Magewire\Payment\Method\AffirmGateway">
+        <arguments>
+            <argument name="checkoutSession" xsi:type="object">Magento\Checkout\Model\Session\Proxy</argument>
+        </arguments>
+    </type>
+    <type name="Hyva\CheckoutAffirm\Model\Checkout\SuccessSession">
+        <arguments>
+            <argument name="checkoutSession" xsi:type="object">Magento\Checkout\Model\Session\Proxy</argument>
+        </arguments>
+    </type>
+
+    <!-- Affirm's default return is a cross-site POST without the SameSite=Lax session cookie. Starting a session
+         there would replace the shopper's, so no session is started; Confirm answers it with a 303 to the GET URL. -->
+    <type name="Magento\Framework\Session\SessionStartChecker">
+        <plugin name="hyva_affirm_skip_session_on_confirm_post" type="Hyva\CheckoutAffirm\Plugin\Framework\Session\SkipSessionOnConfirmPost"/>
+    </type>
+</config>

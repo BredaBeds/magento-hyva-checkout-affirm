@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright (c) 2026 Breda Beds. Licensed under the MIT licence; see LICENSE.
+ */
+-->
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <head>
+        <!-- Affirm's Luma stylesheets; this module works without the storefront module, which removes them too. -->
+        <remove src="Astound_Affirm::affirm-promo.css"/>
+        <remove src="Astound_Affirm::affirm.css"/>
+    </head>
+    <body>
+        <referenceContainer name="hyva.checkout.api-v1.payment-methods">
+            <!-- The window.hyvaAffirm loader (contract v1); a copy from another module on the page is harmless. -->
+            <block name="hyva.checkout.affirm.sdk-loader"
+                   template="Hyva_CheckoutAffirm::js/sdk-loader.phtml"
+                   ifconfig="payment/affirm_gateway/active"/>
+            <block name="hyva.checkout.payment.affirm-gateway.js"
+                   template="Hyva_CheckoutAffirm::checkout/payment/affirm-gateway-js.phtml"
+                   ifconfig="payment/affirm_gateway/active"
+                   after="hyva.checkout.affirm.sdk-loader"/>
+        </referenceContainer>
+    </body>
+</page>

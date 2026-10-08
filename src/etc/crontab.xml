@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright (c) 2026 Breda Beds. Licensed under the MIT licence; see LICENSE.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Cron:etc/crontab.xsd">
+    <group id="default">
+        <job name="hyva_affirm_attempt_cleanup" instance="Hyva\CheckoutAffirm\Cron\CleanupAttempts" method="execute">
+            <schedule>17 3 * * *</schedule>
+        </job>
+        <job name="hyva_affirm_attempt_escalate" instance="Hyva\CheckoutAffirm\Cron\EscalateStaleAttempts" method="execute">
+            <schedule>*/5 * * * *</schedule>
+        </job>
+    </group>
+</config>

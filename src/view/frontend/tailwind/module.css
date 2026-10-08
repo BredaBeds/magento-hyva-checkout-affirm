@@ -1,0 +1,7 @@
+/**
+ * Copyright (c) 2026 Breda Beds. Licensed under the MIT licence; see LICENSE.
+ *
+ * Tailwind CSS 4 Hyvä themes: classes used by this module's templates.
+ */
+@source "../templates/**/*.phtml";
+@source "../layout/**/*.xml";

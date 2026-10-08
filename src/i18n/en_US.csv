@@ -1,0 +1,69 @@
+%1,%1
+Affirm Checkout Attempts,Affirm Checkout Attempts
+Affirm Transaction ID,Affirm Transaction ID
+Affirm could not accept the checkout details. Please check them and try again.,Affirm could not accept the checkout details. Please check them and try again.
+Affirm could not approve this payment. Please choose another payment method.,Affirm could not approve this payment. Please choose another payment method.
+Affirm could not be loaded. Please check your connection and try again.,Affirm could not be loaded. Please check your connection and try again.
+Affirm is not available for the currency of this cart.,Affirm is not available for the currency of this cart.
+Affirm is not available for this cart.,Affirm is not available for this cart.
+Affirm is not available for this cart. Please choose another payment method.,Affirm is not available for this cart. Please choose another payment method.
+Affirm is not available for this order. Please choose another payment method.,Affirm is not available for this order. Please choose another payment method.
+Affirm is not available right now. Please try again or choose another payment method.,Affirm is not available right now. Please try again or choose another payment method.
+"Affirm may have authorized the payment for order #%1, but the order could not be created. Look up the transaction in the Affirm merchant dashboard, then resolve the checkout attempt with bin/magento hyva:affirm:attempt:list and hyva:affirm:attempt:resolve: void it at Affirm if no order exists. The cart stays blocked for other payments until it is resolved.","Affirm may have authorized the payment for order #%1, but the order could not be created. Look up the transaction in the Affirm merchant dashboard, then resolve the checkout attempt with bin/magento hyva:affirm:attempt:list and hyva:affirm:attempt:resolve: void it at Affirm if no order exists. The cart stays blocked for other payments until it is resolved."
+Affirm payment needs review (order #%1),Affirm payment needs review (order #%1)
+An Affirm window will open to complete your purchase.,An Affirm window will open to complete your purchase.
+Attempt,Attempt
+Authorizing,Authorizing
+Confirmed by Affirm,Confirmed by Affirm
+Confirming your payment,Confirming your payment
+Created,Created
+Currency,Currency
+Discount,Discount
+Expires,Expires
+Grand Total,Grand Total
+"Listed here: Affirm checkout attempts that are still open (until they expire) or block their cart. An ""Uncertain"" attempt may hold an Affirm authorization without an order; the cart stays blocked for other payment methods until the attempt is resolved.","Listed here: Affirm checkout attempts that are still open (until they expire) or block their cart. An ""Uncertain"" attempt may hold an Affirm authorization without an order; the cart stays blocked for other payment methods until the attempt is resolved."
+Order #,Order #
+Order reference: #%1,Order reference: #%1
+Payment for this cart is still being confirmed. Please wait a moment or contact us.,Payment for this cart is still being confirmed. Please wait a moment or contact us.
+Placing order,Placing order
+"Please complete your contact, address and shipping details before paying with Affirm.","Please complete your contact, address and shipping details before paying with Affirm."
+Quote ID,Quote ID
+Reason,Reason
+Reserved Order #,Reserved Order #
+Stale Affirm checkout attempts could not all be escalated. See the log for details.,Stale Affirm checkout attempts could not all be escalated. See the log for details.
+Started,Started
+State,State
+Store ID,Store ID
+The Affirm checkout attempt cleanup failed. See the log for details.,The Affirm checkout attempt cleanup failed. See the log for details.
+The Affirm payment could not be authorized. Please try again.,The Affirm payment could not be authorized. Please try again.
+The Affirm payment was cancelled. Please choose a payment method to continue.,The Affirm payment was cancelled. Please choose a payment method to continue.
+The order number reserved for this Affirm payment is no longer available. Please start the payment again.,The order number reserved for this Affirm payment is no longer available. Please start the payment again.
+This Affirm payment belongs to another session. Please start the payment again.,This Affirm payment belongs to another session. Please start the payment again.
+This Affirm payment has expired. Please start the payment again.,This Affirm payment has expired. Please start the payment again.
+This Affirm payment is already complete. Please check your e-mail for the order.,This Affirm payment is already complete. Please check your e-mail for the order.
+This Affirm payment was cancelled. Please start the payment again.,This Affirm payment was cancelled. Please start the payment again.
+This Affirm payment was replaced by a newer one. Please start the payment again.,This Affirm payment was replaced by a newer one. Please start the payment again.
+This page refreshes automatically. Please do not close it.,This page refreshes automatically. Please do not close it.
+"To resolve it, look up the payment in the Affirm merchant dashboard by the reserved order number or the Affirm transaction ID. If an order exists, resolve the attempt as placed with that order number; otherwise void the authorization at Affirm and resolve the attempt as voided:","To resolve it, look up the payment in the Affirm merchant dashboard by the reserved order number or the Affirm transaction ID. If an order exists, resolve the attempt as placed with that order number; otherwise void the authorization at Affirm and resolve the attempt as voided:"
+Too many Affirm payment attempts for this cart. Please try again later or use another payment method.,Too many Affirm payment attempts for this cart. Please try again later or use another payment method.
+Uncertain (needs review),Uncertain (needs review)
+Updated,Updated
+"We are confirming your Affirm payment for order #%1. Please do not pay again; if you do not receive an order confirmation, contact us with this order number.","We are confirming your Affirm payment for order #%1. Please do not pay again; if you do not receive an order confirmation, contact us with this order number."
+We could not confirm your Affirm payment. Please try again.,We could not confirm your Affirm payment. Please try again.
+"We could not confirm your Affirm payment. Please wait a moment, then try again.","We could not confirm your Affirm payment. Please wait a moment, then try again."
+We could not find this Affirm payment. Please start the payment again.,We could not find this Affirm payment. Please start the payment again.
+We could not place your order and no payment was taken. Please try again.,We could not place your order and no payment was taken. Please try again.
+We could not verify this payment with Affirm. Please start the payment again.,We could not verify this payment with Affirm. Please start the payment again.
+You closed Affirm before finishing. Your order has not been placed.,You closed Affirm before finishing. Your order has not been placed.
+You will be redirected to Affirm to complete your purchase.,You will be redirected to Affirm to complete your purchase.
+Your Affirm payment could not be completed while another payment for this cart is being processed. Please place the order again in a moment.,Your Affirm payment could not be completed while another payment for this cart is being processed. Please place the order again in a moment.
+Your Affirm payment could not be confirmed. Please place the order again.,Your Affirm payment could not be confirmed. Please place the order again.
+Your Affirm payment is being confirmed. Please wait a moment.,Your Affirm payment is being confirmed. Please wait a moment.
+"Your Affirm payment is still being confirmed. Please wait a moment, then try again.","Your Affirm payment is still being confirmed. Please wait a moment, then try again."
+Your Affirm payment was not completed. Please try again or use another payment method.,Your Affirm payment was not completed. Please try again or use another payment method.
+Your browser blocked the checkout storage. Please allow it and place the order again.,Your browser blocked the checkout storage. Please allow it and place the order again.
+Your cart changed during the Affirm payment. Please start the payment again.,Your cart changed during the Affirm payment. Please start the payment again.
+Your cart changed while Affirm was being prepared. Please place the order again.,Your cart changed while Affirm was being prepared. Please place the order again.
+Your cart is empty or has expired. Please reload the page.,Your cart is empty or has expired. Please reload the page.
+Your payment method changed. Please select Affirm again.,Your payment method changed. Please select Affirm again.
+Your previous Affirm payment for this cart is still being confirmed. Please reload the page shortly.,Your previous Affirm payment for this cart is still being confirmed. Please reload the page shortly.

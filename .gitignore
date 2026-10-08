@@ -1,0 +1,11 @@
+/vendor/
+/Test/ci/vendor/
+/Test/ci/var/
+/Test/ci/composer.lock
+/Test/js/node_modules/
+/.php-cs-fixer.cache
+/.phpunit.cache/
+/.phpunit.result.cache
+.DS_Store
+.idea/
+/.phpstan-cache/

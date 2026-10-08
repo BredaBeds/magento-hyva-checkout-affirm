@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright (c) 2026 Breda Beds. Licensed under the MIT licence; see LICENSE.
+ */
+-->
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" layout="1column"
+      xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <head>
+        <meta name="robots" content="NOINDEX,NOFOLLOW"/>
+    </head>
+    <body>
+        <!-- Re-requests the same URL while another request places the order; works without script (strict CSP).
+             The confirm controller removes it when the attempt waits for the merchant. -->
+        <referenceBlock name="head.additional">
+            <block class="Magento\Framework\View\Element\Text" name="hyva.affirm.checkout.attempt.refresh">
+                <arguments>
+                    <argument name="text" xsi:type="string"><![CDATA[<meta http-equiv="refresh" content="3">]]></argument>
+                </arguments>
+            </block>
+        </referenceBlock>
+        <referenceContainer name="content">
+            <block name="hyva.affirm.checkout.attempt.status"
+                   template="Hyva_CheckoutAffirm::checkout/attempt/in-progress.phtml"
+                   cacheable="false"/>
+        </referenceContainer>
+    </body>
+</page>

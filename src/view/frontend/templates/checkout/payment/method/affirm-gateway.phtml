@@ -1,0 +1,45 @@
+<?php declare(strict_types=1);
+/**
+ * Copyright (c) 2026 Breda Beds. Licensed under the MIT licence; see LICENSE.
+ *
+ * Affirm payment method body. The first element is the Magewire component root (Magewire adds its attributes to
+ * the first tag, so nothing may precede it). The data attributes feed the hyvaCheckoutAffirmGateway Alpine
+ * component, which renders Affirm's inline widget into the "inline" child; affirm.js owns that subtree.
+ *
+ * @var \Magento\Framework\View\Element\Template $block
+ * @var \Magento\Framework\Escaper $escaper
+ * @var \Hyva\Theme\Model\ViewModelRegistry $viewModels
+ * @var \Hyva\CheckoutAffirm\Magewire\Payment\Method\AffirmGateway $magewire
+ */
+$method = $viewModels->require(\Hyva\CheckoutAffirm\ViewModel\Method::class);
+$inlineCheckout = $magewire->inlineCheckout === null
+    ? ''
+    : (string) json_encode($magewire->inlineCheckout, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+$edu = $method->isEduEnabled();
+$iconUrl = $method->getIconUrl();
+$info = $method->getInfo();
+$infoTags = \Hyva\CheckoutAffirm\ViewModel\Method::INFO_ALLOWED_TAGS;
+?>
+<div wire:key="affirm-gateway"
+     x-data="hyvaCheckoutAffirmGateway"
+     class="hyva-affirm-gateway space-y-2 text-sm"
+     data-mode="<?= $escaper->escapeHtmlAttr($method->getMode()) ?>"
+     data-edu="<?= $edu ? '1' : '0' ?>"
+     data-inline-version="<?= (int) $magewire->inlineVersion ?>"
+     data-inline-checkout="<?= $escaper->escapeHtmlAttr($inlineCheckout) ?>"
+>
+    <?php if ($iconUrl !== '' || $info !== ''): ?>
+        <div class="flex flex-wrap items-center gap-2">
+            <?php if ($iconUrl !== ''): ?>
+                <img src="<?= $escaper->escapeUrl($iconUrl) ?>" alt="" class="h-6 w-auto" aria-hidden="true">
+            <?php endif ?>
+            <?php if ($info !== ''): ?>
+                <div><?= $escaper->escapeHtml($info, $infoTags) ?></div>
+            <?php endif ?>
+        </div>
+    <?php endif ?>
+    <p><?= $escaper->escapeHtml($method->getCopy()) ?></p>
+    <?php if ($edu): ?>
+        <?= /* @noEscape */ $block->getChildHtml('inline') ?>
+    <?php endif ?>
+</div>

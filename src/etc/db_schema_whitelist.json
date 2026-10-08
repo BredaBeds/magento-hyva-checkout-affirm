@@ -1,0 +1,33 @@
+{
+    "hyva_affirm_checkout_attempt": {
+        "column": {
+            "attempt_id": true,
+            "owner_key_hash": true,
+            "quote_id": true,
+            "store_id": true,
+            "customer_id": true,
+            "reserved_increment_id": true,
+            "currency": true,
+            "grand_total_cents": true,
+            "payment_method": true,
+            "snapshot_hash": true,
+            "state": true,
+            "token_hash": true,
+            "order_increment_id": true,
+            "order_id": true,
+            "failure_reason": true,
+            "provider_transaction_id": true,
+            "created_at": true,
+            "updated_at": true,
+            "expires_at": true
+        },
+        "index": {
+            "HYVA_AFFIRM_CHECKOUT_ATTEMPT_QUOTE_ID_STATE": true,
+            "HYVA_AFFIRM_CHECKOUT_ATTEMPT_STATE_UPDATED_AT": true,
+            "HYVA_AFFIRM_CHECKOUT_ATTEMPT_RESERVED_INCREMENT_ID_STORE_ID": true
+        },
+        "constraint": {
+            "PRIMARY": true
+        }
+    }
+}

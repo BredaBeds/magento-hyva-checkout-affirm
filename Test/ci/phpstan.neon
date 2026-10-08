@@ -1,0 +1,27 @@
+# PHPStan in CI: the package configuration plus the harness autoloader (Composer loads it with the phpstan
+# binary from Test/ci/vendor), the Hyvä test doubles and bitexpert/phpstan-magento, which generates Magento's
+# factories, proxies and extension attribute interfaces from the harness's Magento packages, as an installation
+# would. Run from the package root: Test/ci/vendor/bin/phpstan analyse -c Test/ci/phpstan.neon
+includes:
+    - ../../phpstan.neon.dist
+    - vendor/bitexpert/phpstan-magento/extension.neon
+    - phpstan-older-dependencies.php
+
+parameters:
+    paths:
+        - ../../src
+        - ../../Test/Unit
+    scanDirectories:
+        - stubs
+    magento:
+        # The harness plays the Magento root: its vendor/ holds the Magento packages (%rootDir% is
+        # Test/ci/vendor/phpstan/phpstan).
+        magentoRoot: %rootDir%/../../..
+        # The extension is here for type resolution only. Its opinionated rules stay off so CI checks what the
+        # level 6 run on a Magento installation checks; the code makes these choices deliberately (for example
+        # saving the quote payment model directly so the session's quote instance is kept).
+        checkCollectionViaFactory: false
+        checkServiceContracts: false
+        checkResourceModelsUsedDirectly: false
+    extdn:
+        setTemplateDisallowedForBlockClasses: false

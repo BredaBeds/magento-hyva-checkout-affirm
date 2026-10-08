@@ -1,0 +1,42 @@
+<?php declare(strict_types=1);
+/**
+ * Copyright (c) 2026 Breda Beds. Licensed under the MIT licence; see LICENSE.
+ *
+ * Shown by hyva_affirm/checkout/confirm while another request places the order of the attempt (the page then
+ * refreshes itself through the meta refresh in hyva_affirm_checkout_confirm.xml), or while the attempt waits
+ * for the merchant to reconcile it. Data set by the controller: status, message, order_reference.
+ *
+ * @var \Magento\Framework\View\Element\Template $block
+ * @var \Magento\Framework\Escaper $escaper
+ * @var \Hyva\Theme\ViewModel\HyvaCsp|null $hyvaCsp
+ */
+
+$inProgress = $block->getData('status') !== 'uncertain';
+$message = (string) $block->getData('message');
+$orderReference = (string) $block->getData('order_reference');
+?>
+<div class="hyva-affirm-attempt-status my-8 max-w-prose" role="status" aria-live="polite">
+    <?php if ($message !== ''): ?>
+        <p class="text-lg"><?= $escaper->escapeHtml($message) ?></p>
+    <?php endif; ?>
+    <?php if ($inProgress): ?>
+        <p class="mt-4">
+            <?= $escaper->escapeHtml(__('This page refreshes automatically. Please do not close it.')) ?>
+        </p>
+    <?php elseif ($orderReference !== ''): ?>
+        <p class="mt-4">
+            <?= $escaper->escapeHtml(__('Order reference: #%1', $orderReference)) ?>
+        </p>
+    <?php endif; ?>
+</div>
+<script>
+    // A page restored from the back-forward cache shows a stale state: ask the server again.
+    window.addEventListener('pageshow', (event) => {
+        if (event.persisted) {
+            window.location.reload();
+        }
+    });
+</script>
+<?php if (isset($hyvaCsp)) {
+    $hyvaCsp->registerInlineScript();
+} ?>

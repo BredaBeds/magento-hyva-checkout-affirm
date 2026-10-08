@@ -1,0 +1,83 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright (c) 2026 Breda Beds. Licensed under the MIT licence; see LICENSE.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+    <preference for="Hyva\CheckoutAffirm\Model\Attempt\AttemptRepositoryInterface" type="Hyva\CheckoutAffirm\Model\Attempt\AttemptRepository"/>
+    <preference for="Hyva\CheckoutAffirm\Model\Attempt\OwnerKeyInterface" type="Hyva\CheckoutAffirm\Model\Attempt\OwnerKey"/>
+    <preference for="Hyva\CheckoutAffirm\Model\Attempt\SnapshotInterface" type="Hyva\CheckoutAffirm\Model\Attempt\Snapshot"/>
+    <preference for="Hyva\CheckoutAffirm\Model\Checkout\VerifierInterface" type="Hyva\CheckoutAffirm\Model\Checkout\Verifier"/>
+    <preference for="Hyva\CheckoutAffirm\Model\Checkout\CheckoutObjectBuilderInterface" type="Hyva\CheckoutAffirm\Model\Checkout\CheckoutObjectBuilder"/>
+    <preference for="Hyva\CheckoutAffirm\Model\Checkout\ConfirmationPipelineInterface" type="Hyva\CheckoutAffirm\Model\Checkout\ConfirmationPipeline"/>
+
+    <type name="Hyva\CheckoutAffirm\Model\Attempt\OwnerKey">
+        <arguments>
+            <argument name="checkoutSession" xsi:type="object">Magento\Checkout\Model\Session\Proxy</argument>
+        </arguments>
+    </type>
+    <type name="Hyva\CheckoutAffirm\Model\Attempt\Ownership">
+        <arguments>
+            <argument name="customerSession" xsi:type="object">Magento\Customer\Model\Session\Proxy</argument>
+        </arguments>
+    </type>
+    <!-- Affirm's FinancingProgram helper loads the checkout-session quote in its constructor. -->
+    <type name="Hyva\CheckoutAffirm\Model\Checkout\CheckoutObjectBuilder">
+        <arguments>
+            <argument name="financingProgram" xsi:type="object">Astound\Affirm\Helper\FinancingProgram\Proxy</argument>
+        </arguments>
+    </type>
+    <!-- Every bin/magento call builds every command; keep the order repository lazy. -->
+    <type name="Hyva\CheckoutAffirm\Console\Command\ResolveAttempt">
+        <arguments>
+            <argument name="orderRepository" xsi:type="object">Magento\Sales\Api\OrderRepositoryInterface\Proxy</argument>
+        </arguments>
+    </type>
+
+    <!--
+        Affirm logs the pre-authorization URI (it carries the checkout token) and full API responses.
+        The pre-authorization also runs for REST, GraphQL and admin placements, so the redaction is global
+        and covers both Affirm's own logger and Magento's main logger (payment.log inherits it).
+    -->
+    <type name="Astound\Affirm\Logger\Logger">
+        <arguments>
+            <argument name="processors" xsi:type="array">
+                <item name="hyva_affirm_redact" xsi:type="object">Hyva\CheckoutAffirm\Logger\RedactCheckoutTokenProcessor</item>
+            </argument>
+        </arguments>
+    </type>
+    <type name="Magento\Framework\Logger\Monolog">
+        <arguments>
+            <argument name="processors" xsi:type="array">
+                <item name="hyva_affirm_redact" xsi:type="object">Hyva\CheckoutAffirm\Logger\RedactCheckoutTokenProcessor</item>
+            </argument>
+        </arguments>
+    </type>
+
+    <type name="Magento\Framework\Console\CommandListInterface">
+        <arguments>
+            <argument name="commands" xsi:type="array">
+                <item name="hyva_affirm_attempt_list" xsi:type="object">Hyva\CheckoutAffirm\Console\Command\ListAttempts</item>
+                <item name="hyva_affirm_attempt_resolve" xsi:type="object">Hyva\CheckoutAffirm\Console\Command\ResolveAttempt</item>
+                <item name="hyva_affirm_attempt_prune" xsi:type="object">Hyva\CheckoutAffirm\Console\Command\PruneAttempts</item>
+            </argument>
+        </arguments>
+    </type>
+
+    <!-- Admin grid data source. The collections argument must stay in this global file: an adminhtml-scoped
+         declaration replaces the global list and breaks every other grid. -->
+    <type name="Hyva\CheckoutAffirm\Model\ResourceModel\Attempt\Grid\Collection">
+        <arguments>
+            <argument name="mainTable" xsi:type="string">hyva_affirm_checkout_attempt</argument>
+            <argument name="identifierName" xsi:type="string">attempt_id</argument>
+        </arguments>
+    </type>
+    <type name="Magento\Framework\View\Element\UiComponent\DataProvider\CollectionFactory">
+        <arguments>
+            <argument name="collections" xsi:type="array">
+                <item name="hyva_affirm_attempt_listing_data_source" xsi:type="string">Hyva\CheckoutAffirm\Model\ResourceModel\Attempt\Grid\Collection</item>
+            </argument>
+        </arguments>
+    </type>
+</config>

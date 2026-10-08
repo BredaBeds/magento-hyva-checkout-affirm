@@ -1,0 +1,124 @@
+<?php declare(strict_types=1);
+/**
+ * Copyright (c) 2026 Breda Beds. Licensed under the MIT licence; see LICENSE.
+ *
+ * window.hyvaAffirm loader contract v1 — keep this script byte-identical in Hyva_AstoundAffirm and Hyva_CheckoutAffirm.
+ *
+ * @var \Magento\Framework\View\Element\Template $block
+ * @var \Hyva\Theme\Model\ViewModelRegistry $viewModels
+ * @var \Hyva\Theme\ViewModel\HyvaCsp $hyvaCsp
+ */
+$sdk = $viewModels->require(\Hyva\CheckoutAffirm\ViewModel\Sdk::class);
+if (!$sdk->isConfigured()) {
+    return;
+}
+$config = json_encode($sdk->getLoaderConfig(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+?>
+<script>
+window.hyvaAffirmConfig = window.hyvaAffirmConfig || <?= /* @noEscape */ $config ?>;
+(() => {
+    'use strict';
+    // window.hyvaAffirm loader contract v1 (frozen; identical in Hyva_AstoundAffirm and Hyva_CheckoutAffirm).
+    // load(): injects Affirm's documented _affirm_config and affirm.js once; resolves with window.affirm on
+    // affirm.ui.ready, rejects on a script error or after 10 s; a rejected load may be retried.
+    // refresh(): debounced affirm.ui.refresh() once loaded. whenIdle(fn): resolves (and runs fn) after
+    // DOMContentLoaded and an idle period (requestIdleCallback, 2 s timeout).
+    const VERSION = 1;
+    const config = window.hyvaAffirmConfig || {};
+    if ((window.hyvaAffirm && window.hyvaAffirm.version >= VERSION) || !config.public_api_key || !config.script) {
+        return;
+    }
+    let loading = null;
+    let refreshTimer = null;
+    const hasSdkScript = () => !!document.querySelector('script[data-hyva-affirm-sdk]');
+    const installStub = () => {
+        // Readable form of Affirm's documented embed snippet: a queueing window.affirm that affirm.js drains.
+        const a = {};
+        const queue = (name, method) => function () { a[name]._.push([method, arguments]); };
+        a.checkout = queue('checkout', 'set');
+        a.checkout._ = [];
+        a.ui = {_: []};
+        a._ = [];
+        a.ui.ready = queue('ui', 'ready');
+        a.jsReady = function () { a._.push(['ready', arguments]); };
+        'set add save post open empty reset on off trigger ready setProduct'.split(' ')
+            .forEach((method) => { a.checkout[method] = queue('checkout', method); });
+        ['get', 'token', 'url', 'items'].forEach((method) => { a.checkout[method] = () => {}; });
+        window._affirm_config = Object.assign({}, config);
+        const settings = Object.assign({}, config);
+        delete settings.script;
+        a.checkout(settings);
+        window.affirm = a;
+    };
+    const load = () => {
+        if (loading) {
+            return loading;
+        }
+        loading = new Promise((resolve, reject) => {
+            let settled = false;
+            const fail = (reason) => {
+                if (!settled) {
+                    settled = true;
+                    loading = null;
+                    reject(new Error('Affirm: ' + reason));
+                }
+            };
+            const timer = setTimeout(() => fail('affirm.js timed out'), 10000);
+            if (!hasSdkScript()) {
+                if (!(window.affirm && window.affirm.ui && typeof window.affirm.ui.ready === 'function')) {
+                    installStub();
+                }
+                const script = document.createElement('script');
+                script.async = true;
+                script.src = config.script;
+                script.dataset.hyvaAffirmSdk = '';
+                script.addEventListener('error', () => {
+                    clearTimeout(timer);
+                    script.remove();
+                    fail('affirm.js failed to load');
+                });
+                document.head.appendChild(script);
+            }
+            window.affirm.ui.ready(() => {
+                clearTimeout(timer);
+                if (!settled) {
+                    settled = true;
+                    resolve(window.affirm);
+                }
+            });
+        });
+        return loading;
+    };
+    const refresh = () => {
+        clearTimeout(refreshTimer);
+        refreshTimer = setTimeout(() => {
+            if (loading) {
+                loading.then((affirm) => {
+                    if (affirm.ui && typeof affirm.ui.refresh === 'function') {
+                        affirm.ui.refresh();
+                    }
+                }).catch(() => {});
+            }
+        }, 100);
+    };
+    const whenIdle = (fn) => new Promise((resolve) => {
+        const idle = () => (window.requestIdleCallback || ((cb) => setTimeout(cb, 1)))(() => resolve(), {timeout: 2000});
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', idle, {once: true});
+        } else {
+            idle();
+        }
+    }).then(() => (typeof fn === 'function' ? fn() : undefined));
+    window.hyvaAffirm = {version: VERSION, load, refresh, whenIdle};
+    window.addEventListener('hyva-affirm:load', () => { load().catch(() => {}); });
+    whenIdle(() => {
+        const selector = '.affirm-as-low-as:not([data-hyva-affirm-lazy]),.affirm-site-modal,.affirm-product-modal';
+        if (document.querySelector(selector)) {
+            load().catch(() => {});
+        }
+    });
+})();
+</script>
+<?php if (isset($hyvaCsp)) {
+    $hyvaCsp->registerInlineScript();
+} ?>

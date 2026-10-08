@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright (c) 2026 Breda Beds. Licensed under the MIT licence; see LICENSE.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Backend:etc/menu.xsd">
+    <menu>
+        <add id="Hyva_CheckoutAffirm::attempts"
+             title="Affirm Checkout Attempts"
+             translate="title"
+             module="Hyva_CheckoutAffirm"
+             sortOrder="80"
+             parent="Magento_Sales::sales_operation"
+             action="hyva_checkoutaffirm/attempt/index"
+             resource="Hyva_CheckoutAffirm::attempts"/>
+    </menu>
+</config>

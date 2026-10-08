@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright (c) 2026 Breda Beds. Licensed under the MIT licence; see LICENSE.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:App/etc/routes.xsd">
+    <!-- Route id shared with Hyva_AstoundAffirm (same id, own module node) so both modules can be installed
+         together or alone. -->
+    <router id="standard">
+        <route id="hyva_affirm" frontName="hyva_affirm">
+            <module name="Hyva_CheckoutAffirm"/>
+        </route>
+    </router>
+</config>

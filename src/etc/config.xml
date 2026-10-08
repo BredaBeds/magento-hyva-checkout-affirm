@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright (c) 2026 Breda Beds. Licensed under the MIT licence; see LICENSE.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
+    <default>
+        <payment>
+            <affirm_gateway>
+                <!-- Masks these keys in payment.log: the pre-authorization URI carries the checkout token. -->
+                <debugReplaceKeys>uri,checkout_id,checkout_token</debugReplaceKeys>
+            </affirm_gateway>
+        </payment>
+    </default>
+</config>
