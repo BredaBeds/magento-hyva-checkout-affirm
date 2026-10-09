@@ -18,7 +18,18 @@
         <plugin name="hyva_affirm_attempt_tracker" type="Hyva\CheckoutAffirm\Plugin\Affirm\ClientServiceAttemptTracker"/>
     </type>
 
+    <!-- A cart "Checkout with Affirm" button's choice survives the checkout's own default method (README: Cart
+         button preselection). -->
+    <type name="Hyva\Checkout\Magewire\Checkout\Payment\MethodList">
+        <plugin name="hyva_affirm_cart_button_preselect" type="Hyva\CheckoutAffirm\Plugin\HyvaCheckout\CartButtonPreselect"/>
+    </type>
+
     <!-- Session proxies: these classes are built before the session may be started. -->
+    <type name="Hyva\CheckoutAffirm\Plugin\HyvaCheckout\CartButtonPreselect">
+        <arguments>
+            <argument name="checkoutSession" xsi:type="object">Magento\Checkout\Model\Session\Proxy</argument>
+        </arguments>
+    </type>
     <type name="Hyva\CheckoutAffirm\Magewire\Payment\Method\AffirmGateway">
         <arguments>
             <argument name="checkoutSession" xsi:type="object">Magento\Checkout\Model\Session\Proxy</argument>

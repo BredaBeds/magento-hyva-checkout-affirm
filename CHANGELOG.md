@@ -54,6 +54,10 @@ All notable changes to this project are documented in this file. The format foll
   on return responses.
 - Cart refresh on the Hyvä success page after a GET return.
 - The `window.hyvaAffirm` loader contract v1, shared with `Hyva_AstoundAffirm`.
+- Cart button preselection: a plugin on Hyvä Checkout's payment method list re-applies Affirm once when a cart
+  button recorded the choice under the checkout session key `hyva_affirm_preselect_quote_id` (written by
+  `Hyva_AstoundAffirm`), so Hyvä's "Enable first available payment method" no longer replaces it on the first
+  checkout page load of a session. Only when Affirm is available for the quote; the shopper's own pick wins.
 - Removal of Affirm's Luma stylesheets on the Hyvä checkout page.
 - Affirm's logo as the method icon (see `TRADEMARKS.md`).
 - en_US and fr_CA translations.

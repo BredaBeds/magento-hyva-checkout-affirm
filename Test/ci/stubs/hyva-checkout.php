@@ -169,6 +169,33 @@ namespace Hyva\Checkout\Model\Magewire\Component\Evaluation {
     }
 }
 
+namespace Hyva\Checkout\Magewire\Checkout\Payment {
+    use Hyva\Checkout\Model\Magewire\Component\EvaluationInterface;
+    use Hyva\Checkout\Model\Magewire\Component\EvaluationResultFactory;
+    use Hyva\Checkout\Model\Magewire\Component\EvaluationResultInterface;
+    use Magewirephp\Magewire\Component;
+
+    class MethodList extends Component implements EvaluationInterface
+    {
+        public ?string $method = null;
+
+        public function boot(): void
+        {
+            throw new \LogicException('Test double: mock ' . __METHOD__ . '().');
+        }
+
+        public function updatedMethod(string $value): string
+        {
+            throw new \LogicException('Test double: mock ' . __METHOD__ . '().');
+        }
+
+        public function evaluateCompletion(EvaluationResultFactory $resultFactory): EvaluationResultInterface
+        {
+            throw new \LogicException('Test double: mock ' . __METHOD__ . '().');
+        }
+    }
+}
+
 namespace Hyva\Checkout\Model\Magewire\Payment {
     use Exception;
     use Hyva\Checkout\Model\Magewire\Component\EvaluationInterface;

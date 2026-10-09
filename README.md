@@ -155,6 +155,21 @@ Sales > Payment Methods > Affirm) are honoured:
 - **Luma CSS.** `Astound_Affirm::affirm.css` and `affirm-promo.css` are removed on the Hyvä checkout page.
 - **Return pages.** A shopper returning without an order lands on the payment step (`checkout?step=payment`, or
   `checkout` when the active Hyvä checkout has no step named `payment`) with a message.
+- **Cart button preselection.** A cart "Checkout with Affirm" button (for example `Hyva_AstoundAffirm`'s) selects
+  Affirm and opens the checkout. Hyvä Checkout's "Enable first available payment method"
+  (`hyva_themes_checkout/developer/experimental/enable_first_payment_method_available`) replaces that method on the
+  first checkout page load of a session, so a guest reached the payment step with another method checked. The
+  plugin `Plugin\HyvaCheckout\CartButtonPreselect` on Hyvä's payment method list
+  (`Hyva\Checkout\Magewire\Checkout\Payment\MethodList::boot()`) keeps the button's promise. Contract: the button
+  stores the quote id (int) in the checkout session (`Magento\Checkout\Model\Session`) under
+  `hyva_affirm_preselect_quote_id` (`CartButtonPreselect::SESSION_KEY`; this module does not depend on the module
+  that writes it). When the method list is built (a page load, or Hyvä's step navigation) and the record belongs
+  to the current quote, Affirm is selected through Magento's `PaymentMethodManagementInterface::set()` if it is
+  among the quote's available methods, and the record is removed. While Affirm is not available nothing is
+  selected and the record waits. It is removed as soon as the shopper picks a method in the list, and dropped when
+  it belongs to another quote, so it applies at most once and never over the shopper's own choice. With
+  Magewire 1 the list's own update requests are skipped (Magewire 1 restores the browser's copy of the method after
+  `boot()`); Magewire 3 restores it before `boot()`. Without a record the list behaves as stock Hyvä Checkout.
 
 ## How it works
 
@@ -558,6 +573,11 @@ Magewire 3's backwards-compatibility layer:
   `hyvaCheckout.*` and window events.
 - **`prepareInline()`** reserves the order number when the cart has none yet (as Affirm's own inline checkout does;
   idempotent while unused); it never creates attempts.
+- **Cart button preselection plugin** (on Hyvä's `MethodList::boot()`, see
+  [Behaviour notes](#behaviour-notes)): on Magewire 1 it reads the list's own request
+  (`getRequest()->isSubsequent()`) to leave the list's update requests alone; Magewire 3, detected by its class
+  `Magewirephp\Magewire\Mechanisms\HandleComponents\HandleComponents`, needs no such check and the request API is
+  not called there.
 
 Throttle arguments of the component: `attemptLimit` (new attempts per cart, default 10) within
 `attemptWindowSeconds` (default 3600):
@@ -702,7 +722,7 @@ Observed in Affirm's US sandbox on 2026-10-08; see Affirm's
 
 | Suite | Command | Result on 2026-10-08 |
 |---|---|---|
-| PHP unit tests (PHPUnit 10.5) | on a Magento installation: `vendor/bin/phpunit -c dev/tests/unit/phpunit.xml.dist <package>/Test/Unit` | 648 tests pass |
+| PHP unit tests (PHPUnit 10.5) | on a Magento installation: `vendor/bin/phpunit -c dev/tests/unit/phpunit.xml.dist <package>/Test/Unit` | 661 tests pass |
 | CI harness, no Magento installation needed | see [`Test/ci/README.md`](Test/ci/README.md) | all steps pass, reproduced locally with PHP 8.5 against Magento 2.4.9 and 2.4.7-p10 |
 | JavaScript (Node 20+, `node:test`) | `node --test Test/js/*.test.mjs` (pass the files: newer Node releases read a directory argument as a module path) | 44 tests pass |
 | Static analysis | php-cs-fixer (Magento rule set), PHPCS `Magento2` (errors fail, warnings reported), PHPStan level 6, PHPCompatibility for PHP 8.1+ | clean |
@@ -735,6 +755,7 @@ part of public CI and are recorded here per release.
 | Server-side refusal (cart fell under the minimum in another tab) → module message, Affirm not opened, no order; browser-modified public properties do not replace the server attempt | pass |
 | Inline widget data follows shipping-method and saved-address changes; stale versions ignored | pass at data level (the sandbox account does not display the widget) |
 | Cart refresh after a GET return: header cart empty on the success page and the next page | pass |
+| Cart button preselection with "Enable first available payment method" on: guest after the address and shipping method steps, logged-in customer with saved addresses, checkout opening at its first step (applied by step navigation), another method picked afterwards is kept, no change without the button | pass |
 | Real checkout tokens absent from every Magento log | pass (present in the web-server access log: see the deployment note) |
 | Admin: online capture, partial and full online refund, void through cancel | pass; partial capture refused by the sandbox account |
 | CLI list, resolve and prune; cleanup cron; admin grid data provider | pass (the admin grid page itself was not opened in a browser) |
