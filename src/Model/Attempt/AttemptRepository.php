@@ -135,16 +135,18 @@ class AttemptRepository implements AttemptRepositoryInterface
     /**
      * @inheritdoc
      */
-    public function findLatestForQuote(int $quoteId): ?Attempt
+    public function supersedeOthersForQuote(int $quoteId, #[\SensitiveParameter] string $keepAttemptId): int
     {
-        $connection = $this->connection();
-        $select = $connection->select()
-            ->from($this->table())
-            ->where('quote_id = ?', $quoteId)
-            ->order('created_at DESC')
-            ->limit(1);
-
-        return $this->toAttempt($connection->fetchRow($select));
+        // One set-based compare-and-swap: parallel preparations cannot leave two open attempts behind.
+        return $this->connection()->update(
+            $this->table(),
+            ['state' => State::FAILED->value, 'failure_reason' => Attempt::REASON_SUPERSEDED],
+            [
+                'quote_id = ?' => $quoteId,
+                'state IN (?)' => $this->values(State::open()),
+                'attempt_id <> ?' => $keepAttemptId,
+            ]
+        );
     }
 
     /**
@@ -308,35 +310,6 @@ class AttemptRepository implements AttemptRepositoryInterface
         ]);
 
         return $deleted;
-    }
-
-    /**
-     * @inheritdoc
-     */
-    public function markResolved(
-        #[\SensitiveParameter] string $attemptId,
-        string $outcome,
-        ?string $orderIncrementId = null,
-        ?int $orderId = null,
-        bool $includeStuck = false
-    ): bool {
-        $set = match ($outcome) {
-            self::OUTCOME_PLACED => ['failure_reason' => Attempt::REASON_RESOLVED_PLACED],
-            self::OUTCOME_VOIDED => ['failure_reason' => Attempt::REASON_RESOLVED_VOIDED],
-            default => throw new InvalidArgumentException(sprintf('Unknown resolution outcome "%s".', $outcome)),
-        };
-        if ($outcome === self::OUTCOME_PLACED) {
-            if ($orderIncrementId === null || $orderIncrementId === '') {
-                throw new InvalidArgumentException('Resolving an attempt as placed needs the order increment id.');
-            }
-            $set['order_increment_id'] = $orderIncrementId;
-            $set['order_id'] = $orderId;
-        }
-        $from = $includeStuck
-            ? [State::UNCERTAIN, State::PLACING, State::AUTHORIZING]
-            : [State::UNCERTAIN];
-
-        return $this->transition($attemptId, $from, State::RESOLVED, $set);
     }
 
     /**

@@ -57,7 +57,6 @@ class MethodTest extends TestCase
         $this->assertFalse($method->isPlainText());
         $this->assertSame('Pay <b>over</b> time', $method->getInfo());
         $this->assertSame('', $method->getIconUrl(), "Affirm's default icon is not repeated in the body");
-        $this->assertSame('Affirm', $method->getTitle());
     }
 
     public function testPlainTextModeShowsNeitherIconNorInfo(): void
@@ -70,7 +69,6 @@ class MethodTest extends TestCase
         ]);
 
         $this->assertTrue($method->isPlainText());
-        $this->assertSame('Monthly payments', $method->getTitle());
         $this->assertSame('', $method->getInfo());
         $this->assertSame('', $method->getIconUrl());
     }
@@ -153,7 +151,6 @@ class MethodTest extends TestCase
     {
         $method = $this->method([], false, true);
 
-        $this->assertSame('Affirm', $method->getTitle());
         $this->assertFalse($method->isPlainText());
         $this->assertSame('', $method->getInfo());
         $this->assertSame('', $method->getIconUrl());

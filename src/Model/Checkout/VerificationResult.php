@@ -17,6 +17,7 @@ final class VerificationResult // phpcs:ignore Magento2.PHP.FinalImplementation 
     public const REASON_NOT_CONFIGURED = 'not_configured';
     public const REASON_TRANSPORT_ERROR = 'transport_error';
     public const REASON_HTTP_ERROR = 'http_error';
+    public const REASON_SERVICE_UNAVAILABLE = 'service_unavailable';
     public const REASON_INVALID_RESPONSE = 'invalid_response';
     public const REASON_MISSING_FIELD = 'missing_field';
     public const REASON_NOT_CONFIRMED = 'not_confirmed';
@@ -40,6 +41,20 @@ final class VerificationResult // phpcs:ignore Magento2.PHP.FinalImplementation 
         public readonly ?int $total = null,
         public readonly ?string $currency = null
     ) {
+    }
+
+    /**
+     * Whether Affirm could not answer (unreachable or busy), so the same token may be verified again.
+     *
+     * @return bool
+     */
+    public function isTemporary(): bool
+    {
+        return in_array(
+            $this->reason,
+            [self::REASON_TRANSPORT_ERROR, self::REASON_SERVICE_UNAVAILABLE],
+            true
+        );
     }
 
     /**

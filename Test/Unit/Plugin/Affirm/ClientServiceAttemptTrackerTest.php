@@ -133,6 +133,42 @@ class ClientServiceAttemptTrackerTest extends TestCase
         $this->call('POST', '/api/v1/transactions/', null);
     }
 
+    public function testHandsARefusedAuthorizationBackToPlacing(): void
+    {
+        $this->context->begin(self::ATTEMPT_ID, 42);
+        $transitions = [];
+        $this->attempts->method('transition')->willReturnCallback(
+            function (string $id, array $from, State $to) use (&$transitions): bool {
+                $transitions[] = $from[0]->value . '>' . $to->value;
+
+                return true;
+            }
+        );
+
+        $this->call('POST', '/api/v1/transactions/', ['status_code' => 400, 'type' => 'invalid_request']);
+        $this->call('POST', '/api/v1/transactions/', ['status_code' => '403', 'code' => 'forbidden']);
+
+        $this->assertSame(
+            ['placing>authorizing', 'authorizing>placing', 'placing>authorizing', 'authorizing>placing'],
+            $transitions
+        );
+    }
+
+    public function testKeepsTheAttemptAuthorizingWhenTheAnswerDoesNotProveARefusal(): void
+    {
+        $this->context->begin(self::ATTEMPT_ID, 42);
+        $this->attempts->expects($this->exactly(6))->method('transition')
+            ->with(self::ATTEMPT_ID, [State::PLACING], State::AUTHORIZING)
+            ->willReturn(true);
+
+        $this->call('POST', '/api/v1/transactions/', ['status_code' => 408]);
+        $this->call('POST', '/api/v1/transactions/', ['status_code' => 409, 'code' => 'already-authorized']);
+        $this->call('POST', '/api/v1/transactions/', ['status_code' => 500]);
+        $this->call('POST', '/api/v1/transactions/', ['id' => 'X', 'status_code' => 400]);
+        $this->call('POST', '/api/v1/transactions/', ['status' => 'declined']);
+        $this->call('POST', '/api/v1/transactions/', null);
+    }
+
     public function testRefusesToAuthorizeAnAttemptThatIsNoLongerBeingPlaced(): void
     {
         $this->context->begin(self::ATTEMPT_ID, 42);

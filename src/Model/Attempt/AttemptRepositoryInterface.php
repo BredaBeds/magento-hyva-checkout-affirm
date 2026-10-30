@@ -54,12 +54,13 @@ interface AttemptRepositoryInterface
     public function get(#[\SensitiveParameter] string $attemptId): ?Attempt;
 
     /**
-     * The most recently created attempt of a quote, in any state.
+     * Fail every other open attempt of a quote as superseded, so only the newest preparation can be confirmed.
      *
      * @param int $quoteId
-     * @return Attempt|null
+     * @param string $keepAttemptId the attempt that stays open
+     * @return int the number of attempts superseded
      */
-    public function findLatestForQuote(int $quoteId): ?Attempt;
+    public function supersedeOthersForQuote(int $quoteId, #[\SensitiveParameter] string $keepAttemptId): int;
 
     /**
      * The latest reusable "initiated" attempt of this quote, owner and cart snapshot.
@@ -148,25 +149,4 @@ interface AttemptRepositoryInterface
      * @throws InvalidArgumentException when $olderThanDays < 1
      */
     public function prune(int $olderThanDays): int;
-
-    /**
-     * Reconciliation: uncertain -> resolved with outcome "placed" (order known) or "voided" (released at Affirm).
-     * With $includeStuck, also resolves attempts left in placing/authorizing (e.g. after a crashed process);
-     * callers must make sure no placement is still running.
-     *
-     * @param string $attemptId
-     * @param string $outcome self::OUTCOME_PLACED|self::OUTCOME_VOIDED
-     * @param string|null $orderIncrementId required for OUTCOME_PLACED
-     * @param int|null $orderId
-     * @param bool $includeStuck
-     * @return bool
-     * @throws InvalidArgumentException for an unknown outcome or a missing order increment id
-     */
-    public function markResolved(
-        #[\SensitiveParameter] string $attemptId,
-        string $outcome,
-        ?string $orderIncrementId = null,
-        ?int $orderId = null,
-        bool $includeStuck = false
-    ): bool;
 }

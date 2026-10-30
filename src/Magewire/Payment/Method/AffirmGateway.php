@@ -397,19 +397,8 @@ class AffirmGateway extends Component implements EvaluationInterface
 
         $preview = $this->checkoutObjectBuilder->build($quote, CheckoutObjectBuilderInterface::MODE_INLINE, '');
 
-        $latest = $this->attemptRepository->findLatestForQuote($quoteId);
-        if ($latest !== null && $latest->state->isOpen()) {
-            $this->attemptRepository->transition(
-                $latest->attemptId,
-                State::open(),
-                State::FAILED,
-                ['failure_reason' => Attempt::REASON_SUPERSEDED]
-            );
-        }
-
         $customerId = $quote->getData('customer_id');
-
-        return $this->attemptRepository->create(
+        $attempt = $this->attemptRepository->create(
             $quoteId,
             (int) $quote->getStoreId(),
             is_numeric($customerId) && (int) $customerId > 0 ? (int) $customerId : null,
@@ -420,6 +409,9 @@ class AffirmGateway extends Component implements EvaluationInterface
             $ownerKeyHash,
             self::METHOD_CODE
         );
+        $this->attemptRepository->supersedeOthersForQuote($quoteId, $attempt->attemptId);
+
+        return $attempt;
     }
 
     /**

@@ -48,18 +48,6 @@ class Method implements ArgumentInterface
     }
 
     /**
-     * Method title (payment/affirm_gateway/title).
-     *
-     * @return string
-     */
-    public function getTitle(): string
-    {
-        $title = $this->text('title');
-
-        return $title !== '' ? $title : 'Affirm';
-    }
-
-    /**
      * Whether Affirm's "Plain Text Appearance" is on (no default in Affirm: off shows the logo and info HTML).
      *
      * @return bool

@@ -42,7 +42,6 @@ class AffirmGatewayTest extends TestCase
     private const OWNER = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
     private const SNAPSHOT = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
     private const ATTEMPT_ID = 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc';
-    private const PREVIOUS_ID = 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd';
     private const TOTAL = 132025;
 
     /** @var Quote&MockObject */
@@ -136,13 +135,9 @@ class AffirmGatewayTest extends TestCase
 
                 return 3;
             });
-        $this->attempts->method('findLatestForQuote')->willReturn($this->attempt(self::PREVIOUS_ID, State::INITIATED));
-        $this->attempts->expects($this->once())->method('transition')->with(
-            self::PREVIOUS_ID,
-            State::open(),
-            State::FAILED,
-            ['failure_reason' => Attempt::REASON_SUPERSEDED]
-        )->willReturn(true);
+        $this->attempts->expects($this->once())->method('supersedeOthersForQuote')
+            ->with(self::QUOTE_ID, self::ATTEMPT_ID)
+            ->willReturn(1);
         $this->attempts->expects($this->once())->method('create')
             ->with(
                 self::QUOTE_ID,

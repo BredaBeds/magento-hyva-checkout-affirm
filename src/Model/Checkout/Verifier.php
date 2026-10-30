@@ -94,6 +94,9 @@ class Verifier implements VerifierInterface
             return $this->fail(VerificationResult::REASON_TRANSPORT_ERROR);
         }
 
+        if ($status >= 500 || $status === 429) {
+            return $this->fail(VerificationResult::REASON_SERVICE_UNAVAILABLE, $status);
+        }
         if ($status !== 200) {
             return $this->fail(VerificationResult::REASON_HTTP_ERROR, $status);
         }

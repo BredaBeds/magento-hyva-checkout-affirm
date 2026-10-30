@@ -7,14 +7,21 @@ declare(strict_types=1);
 namespace Hyva\CheckoutAffirm\Test\Unit\Console\Command;
 
 use Hyva\CheckoutAffirm\Console\Command\ResolveAttempt;
+use Hyva\CheckoutAffirm\Model\Attempt\AdminNotifier;
 use Hyva\CheckoutAffirm\Model\Attempt\Attempt;
 use Hyva\CheckoutAffirm\Model\Attempt\AttemptRepositoryInterface;
+use Hyva\CheckoutAffirm\Model\Attempt\PlacementContext;
 use Hyva\CheckoutAffirm\Model\Attempt\StaleAttemptPolicy;
 use Hyva\CheckoutAffirm\Model\Attempt\State;
+use Hyva\CheckoutAffirm\Model\Checkout\AttemptRecovery;
+use Hyva\CheckoutAffirm\Model\Checkout\OrderPlacement;
 use Magento\Framework\Api\SearchCriteria;
 use Magento\Framework\Api\SearchCriteriaBuilder;
 use Magento\Framework\Console\Cli;
+use Magento\Framework\DB\Adapter\AdapterInterface;
 use Magento\Framework\Stdlib\DateTime\DateTime;
+use Magento\Quote\Api\CartManagementInterface;
+use Magento\Quote\Model\ResourceModel\Quote as QuoteResource;
 use Magento\Sales\Api\Data\OrderInterface;
 use Magento\Sales\Api\Data\OrderPaymentInterface;
 use Magento\Sales\Api\Data\OrderSearchResultInterface;
@@ -22,6 +29,7 @@ use Magento\Sales\Api\OrderRepositoryInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Console\Tester\CommandTester;
 
 class ResolveAttemptTest extends TestCase
@@ -67,6 +75,11 @@ class ResolveAttemptTest extends TestCase
      * @var bool
      */
     private bool $transitionResult = true;
+
+    /**
+     * @var list<array{0: array<string, mixed>, 1: array<string, mixed>}>
+     */
+    private array $quoteUpdates = [];
 
     /**
      * @var SearchCriteriaBuilder&MockObject
@@ -121,20 +134,47 @@ class ResolveAttemptTest extends TestCase
         $this->criteriaBuilder = $builder;
         $this->dateTime = $dateTime;
 
-        $this->tester = new CommandTester(
-            new ResolveAttempt($this->attempts, $this->orderRepository, $builder, $dateTime, new StaleAttemptPolicy())
+        $this->tester = new CommandTester($this->command(new StaleAttemptPolicy()));
+    }
+
+    /**
+     * The command with the real order lookup and attempt rules over the mocked repositories.
+     *
+     * @param StaleAttemptPolicy $policy
+     * @return ResolveAttempt
+     */
+    private function command(StaleAttemptPolicy $policy): ResolveAttempt
+    {
+        $connection = $this->createMock(AdapterInterface::class);
+        $connection->method('update')->willReturnCallback(function (string $table, array $bind, array $where): int {
+            $this->quoteUpdates[] = [$bind, $where];
+
+            return 1;
+        });
+        $quoteResource = $this->createMock(QuoteResource::class);
+        $quoteResource->method('getConnection')->willReturn($connection);
+        $quoteResource->method('getMainTable')->willReturn('quote');
+        $orderPlacement = new OrderPlacement(
+            $this->createMock(CartManagementInterface::class),
+            new PlacementContext(),
+            $this->orderRepository,
+            $this->criteriaBuilder,
+            $quoteResource
         );
+        $recovery = new AttemptRecovery(
+            $this->attempts,
+            $orderPlacement,
+            $this->createMock(AdminNotifier::class),
+            $policy,
+            $this->createMock(LoggerInterface::class)
+        );
+
+        return new ResolveAttempt($this->attempts, $orderPlacement, $recovery, $this->dateTime, $policy);
     }
 
     public function testIsConfigured(): void
     {
-        $command = new ResolveAttempt(
-            $this->attempts,
-            $this->orderRepository,
-            $this->createMock(SearchCriteriaBuilder::class),
-            $this->createMock(DateTime::class),
-            new StaleAttemptPolicy()
-        );
+        $command = $this->command(new StaleAttemptPolicy());
 
         $this->assertSame('hyva:affirm:attempt:resolve', $command->getName());
         $definition = $command->getDefinition();
@@ -149,13 +189,7 @@ class ResolveAttemptTest extends TestCase
 
     public function testForceUsesTheSharedStaleThreshold(): void
     {
-        $tester = new CommandTester(new ResolveAttempt(
-            $this->attempts,
-            $this->orderRepository,
-            $this->criteriaBuilder,
-            $this->dateTime,
-            new StaleAttemptPolicy(1800)
-        ));
+        $tester = new CommandTester($this->command(new StaleAttemptPolicy(1800)));
         // Unchanged for 20 minutes: enough for the default, not for a 30-minute threshold.
         $this->stored = $this->attempt(State::PLACING, ['updated_at' => '2026-10-07 09:40:00']);
 
@@ -382,6 +416,20 @@ class ResolveAttemptTest extends TestCase
         ]], $this->transitions);
         $this->assertStringContainsString('resolved as placed with order #000000123', $display);
         $this->assertStringNotContainsString('reserved order number', $display);
+        $this->assertSame([[['is_active' => 0], ['entity_id = ?' => 42, 'is_active = ?' => 1]]], $this->quoteUpdates);
+    }
+
+    public function testPlacedRefusesAnOrderOfAnotherAttemptOfTheCart(): void
+    {
+        $this->stored = $this->attempt(State::UNCERTAIN);
+        $this->orders['000000123|1'] = [$this->order('000000123', 42, 'affirm_gateway', 555, str_repeat('cd', 32))];
+
+        $status = $this->resolve(['--outcome' => 'placed', '--order' => '000000123']);
+
+        $this->assertSame(Cli::RETURN_FAILURE, $status);
+        $this->assertStringContainsString('by another checkout attempt', $this->tester->getDisplay());
+        $this->assertSame([], $this->transitions);
+        $this->assertSame([], $this->quoteUpdates);
     }
 
     public function testPlacedWithAnotherOrderNumberOfTheSameCartIsNoted(): void
@@ -479,10 +527,17 @@ class ResolveAttemptTest extends TestCase
      * @param int $entityId
      * @return OrderInterface&MockObject
      */
-    private function order(string $incrementId, int $quoteId, string $method, int $entityId = 500): OrderInterface
-    {
+    private function order(
+        string $incrementId,
+        int $quoteId,
+        string $method,
+        int $entityId = 500,
+        ?string $attemptId = null
+    ): OrderInterface {
         $payment = $this->createMock(OrderPaymentInterface::class);
         $payment->method('getMethod')->willReturn($method);
+        $payment->method('getAdditionalInformation')
+            ->willReturn(['hyva_affirm_attempt_id' => $attemptId ?? str_repeat('ab', 32)]);
         $order = $this->createMock(OrderInterface::class);
         $order->method('getIncrementId')->willReturn($incrementId);
         $order->method('getQuoteId')->willReturn((string) $quoteId);

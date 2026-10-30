@@ -232,7 +232,31 @@ class VerifierTest extends TestCase
     public static function httpErrors(): array
     {
         return ['bad request' => [400], 'unauthorized' => [401], 'not found' => [404], 'redirect' => [302],
-            'server error' => [500], 'no status' => [0], 'created' => [201]];
+            'no status' => [0], 'created' => [201]];
+    }
+
+    /**
+     * @return array<string, array{0: int}>
+     */
+    public static function unavailableStatuses(): array
+    {
+        return ['server error' => [500], 'bad gateway' => [502], 'unavailable' => [503], 'rate limited' => [429]];
+    }
+
+    #[DataProvider('unavailableStatuses')]
+    public function testServerErrorsAndRateLimitsAreTemporary(int $status): void
+    {
+        $this->respond($status, $this->response());
+
+        $result = $this->verifier->verify($this->attempt(), self::TOKEN);
+
+        $this->assertFalse($result->ok);
+        $this->assertSame(VerificationResult::REASON_SERVICE_UNAVAILABLE, $result->reason);
+        $this->assertTrue($result->isTemporary());
+        $this->assertSame(
+            [['Affirm checkout verification failed.', ['reason' => 'service_unavailable', 'http_status' => $status]]],
+            $this->warnings
+        );
     }
 
     #[DataProvider('httpErrors')]
@@ -244,6 +268,7 @@ class VerifierTest extends TestCase
 
         $this->assertFalse($result->ok);
         $this->assertSame(VerificationResult::REASON_HTTP_ERROR, $result->reason);
+        $this->assertFalse($result->isTemporary());
         $this->assertNull($result->checkoutStatus);
         $this->assertSame(
             [['Affirm checkout verification failed.', ['reason' => 'http_error', 'http_status' => $status]]],
@@ -265,6 +290,7 @@ class VerifierTest extends TestCase
 
         $this->assertFalse($result->ok);
         $this->assertSame(VerificationResult::REASON_TRANSPORT_ERROR, $result->reason);
+        $this->assertTrue($result->isTemporary());
         $this->assertSame(
             [['Affirm checkout verification failed.', ['reason' => 'transport_error', 'http_status' => null]]],
             $this->warnings

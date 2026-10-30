@@ -293,9 +293,9 @@ class ConfirmTest extends TestCase
         $this->assertToPaymentStep();
     }
 
-    public function testInProgressDropsTheTokenFromTheAddressBar(): void
+    public function testUncertainDropsTheTokenFromTheAddressBar(): void
     {
-        $this->outcome = ConfirmationOutcome::inProgress('Being confirmed.', 42);
+        $this->outcome = ConfirmationOutcome::uncertain('We are confirming order #000000123.', 42, '000000123');
         $this->params = ['attempt' => self::ATTEMPT_ID, 'checkout_token' => self::TOKEN];
 
         $this->controller->execute();
@@ -325,14 +325,16 @@ class ConfirmTest extends TestCase
         $this->assertSame([], $this->redirects);
     }
 
-    public function testCartLockRetryKeepsTheTokenForTheRefresh(): void
+    public function testInProgressKeepsTheTokenForTheRefresh(): void
     {
-        $this->outcome = ConfirmationOutcome::inProgress('Retry.', 42, ConfirmationOutcome::REASON_RETRY);
-        $this->params = ['attempt' => self::ATTEMPT_ID, 'checkout_token' => self::TOKEN];
+        foreach ([ConfirmationOutcome::REASON_IN_PROGRESS, ConfirmationOutcome::REASON_RETRY] as $reason) {
+            $this->outcome = ConfirmationOutcome::inProgress('Being confirmed.', 42, $reason);
+            $this->params = ['attempt' => self::ATTEMPT_ID, 'checkout_token' => self::TOKEN];
 
-        $this->assertInstanceOf(Page::class, $this->controller->execute());
-        $this->assertSame([], $this->page['unset']);
-        $this->assertSame([], $this->redirects);
+            $this->assertInstanceOf(Page::class, $this->controller->execute(), $reason);
+            $this->assertSame([], $this->page['unset']);
+            $this->assertSame([], $this->redirects);
+        }
     }
 
     public function testUncertainRendersThePageWithoutRefresh(): void

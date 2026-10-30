@@ -258,7 +258,7 @@ class ItemsBuilder
             try {
                 return $this->imageUrlBuilder->getUrl($file, $this->imageId);
             } catch (\Throwable $e) {
-                $this->logger->warning('Affirm checkout item image URL unavailable.', ['error' => $e->getMessage()]);
+                $this->logger->warning('Affirm checkout item image URL unavailable.', ['exception_class' => get_class($e)]);
 
                 return '';
             }
@@ -281,7 +281,7 @@ class ItemsBuilder
         try {
             return $this->text($product->getProductUrl());
         } catch (\Throwable $e) {
-            $this->logger->warning('Affirm checkout item URL unavailable.', ['error' => $e->getMessage()]);
+            $this->logger->warning('Affirm checkout item URL unavailable.', ['exception_class' => get_class($e)]);
 
             return '';
         }

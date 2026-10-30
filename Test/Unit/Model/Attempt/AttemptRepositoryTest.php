@@ -292,51 +292,6 @@ class AttemptRepositoryTest extends TestCase
         $this->repository->transition($this->id, $from, $to, $set, $conditions);
     }
 
-    public function testMarkResolvedPlaced(): void
-    {
-        $this->connection->expects($this->once())
-            ->method('update')
-            ->with(
-                self::TABLE,
-                [
-                    'failure_reason' => Attempt::REASON_RESOLVED_PLACED,
-                    'order_increment_id' => '000000123',
-                    'order_id' => 77,
-                    'state' => 'resolved',
-                ],
-                ['attempt_id = ?' => $this->id, 'state IN (?)' => ['uncertain']]
-            )
-            ->willReturn(1);
-
-        $this->assertTrue($this->repository->markResolved($this->id, 'placed', '000000123', 77));
-    }
-
-    public function testMarkResolvedVoidedIncludingStuckAttempts(): void
-    {
-        $this->connection->expects($this->once())
-            ->method('update')
-            ->with(
-                self::TABLE,
-                ['failure_reason' => Attempt::REASON_RESOLVED_VOIDED, 'state' => 'resolved'],
-                ['attempt_id = ?' => $this->id, 'state IN (?)' => ['uncertain', 'placing', 'authorizing']]
-            )
-            ->willReturn(1);
-
-        $this->assertTrue($this->repository->markResolved($this->id, 'voided', null, null, true));
-    }
-
-    public function testMarkResolvedPlacedNeedsOrder(): void
-    {
-        $this->expectException(InvalidArgumentException::class);
-        $this->repository->markResolved($this->id, 'placed');
-    }
-
-    public function testMarkResolvedRejectsUnknownOutcome(): void
-    {
-        $this->expectException(InvalidArgumentException::class);
-        $this->repository->markResolved($this->id, 'refunded');
-    }
-
     public function testRecordTransactionIdOnlyWhileAuthorizing(): void
     {
         $this->connection->expects($this->once())
@@ -397,15 +352,18 @@ class AttemptRepositoryTest extends TestCase
         $this->assertContains(['order', 'created_at DESC'], $this->selectCalls);
     }
 
-    public function testFindLatestForQuote(): void
+    public function testSupersedeOthersForQuoteIsOneCompareAndSwap(): void
     {
-        $this->connection->method('fetchRow')->willReturn($this->row());
+        $this->connection->expects($this->once())
+            ->method('update')
+            ->with(
+                self::TABLE,
+                ['state' => 'failed', 'failure_reason' => 'superseded'],
+                ['quote_id = ?' => 42, 'state IN (?)' => ['initiated', 'confirmed'], 'attempt_id <> ?' => $this->id]
+            )
+            ->willReturn(2);
 
-        $attempt = $this->repository->findLatestForQuote(42);
-
-        $this->assertNotNull($attempt);
-        $this->assertSame([['quote_id = ?', 42]], $this->wheres);
-        $this->assertContains(['order', 'created_at DESC'], $this->selectCalls);
+        $this->assertSame(2, $this->repository->supersedeOthersForQuote(42, $this->id));
     }
 
     public function testCountRecentForQuote(): void

@@ -159,7 +159,7 @@ class CheckoutObjectBuilderTest extends TestCase
                     'platform_type' => 'Magento 2',
                     'platform_version' => '2.4.9 Community',
                     'platform_affirm' => '4.0.11',
-                    'platform_integration' => 'hyva-checkout-affirm/' . Version::VERSION,
+                    'platform_integration' => 'hyva-checkout-affirm/' . Version::get(),
                     'mode' => 'redirect',
                     'shipping_type' => 'Flat Rate - Fixed',
                 ],

@@ -28,10 +28,11 @@
             <argument name="financingProgram" xsi:type="object">Astound\Affirm\Helper\FinancingProgram\Proxy</argument>
         </arguments>
     </type>
-    <!-- Every bin/magento call builds every command; keep the order repository lazy. -->
+    <!-- Every bin/magento call builds every command; keep the order lookups lazy. -->
     <type name="Hyva\CheckoutAffirm\Console\Command\ResolveAttempt">
         <arguments>
-            <argument name="orderRepository" xsi:type="object">Magento\Sales\Api\OrderRepositoryInterface\Proxy</argument>
+            <argument name="orderPlacement" xsi:type="object">Hyva\CheckoutAffirm\Model\Checkout\OrderPlacement\Proxy</argument>
+            <argument name="recovery" xsi:type="object">Hyva\CheckoutAffirm\Model\Checkout\AttemptRecovery\Proxy</argument>
         </arguments>
     </type>
 

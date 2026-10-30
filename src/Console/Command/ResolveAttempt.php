@@ -10,11 +10,11 @@ use Hyva\CheckoutAffirm\Model\Attempt\Attempt;
 use Hyva\CheckoutAffirm\Model\Attempt\AttemptRepositoryInterface;
 use Hyva\CheckoutAffirm\Model\Attempt\StaleAttemptPolicy;
 use Hyva\CheckoutAffirm\Model\Attempt\State;
-use Magento\Framework\Api\SearchCriteriaBuilder;
+use Hyva\CheckoutAffirm\Model\Checkout\AttemptRecovery;
+use Hyva\CheckoutAffirm\Model\Checkout\OrderPlacement;
 use Magento\Framework\Console\Cli;
 use Magento\Framework\Stdlib\DateTime\DateTime;
 use Magento\Sales\Api\Data\OrderInterface;
-use Magento\Sales\Api\OrderRepositoryInterface;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Formatter\OutputFormatter;
 use Symfony\Component\Console\Input\InputArgument;
@@ -45,16 +45,16 @@ class ResolveAttempt extends Command
 
     /**
      * @param AttemptRepositoryInterface $attempts
-     * @param OrderRepositoryInterface $orderRepository
-     * @param SearchCriteriaBuilder $searchCriteriaBuilder
+     * @param OrderPlacement $orderPlacement
+     * @param AttemptRecovery $recovery
      * @param DateTime $dateTime
      * @param StaleAttemptPolicy $stalePolicy how long a placing/authorizing attempt must be unchanged before --force
      *        applies (the threshold the escalation cron job uses too)
      */
     public function __construct(
         private readonly AttemptRepositoryInterface $attempts,
-        private readonly OrderRepositoryInterface $orderRepository,
-        private readonly SearchCriteriaBuilder $searchCriteriaBuilder,
+        private readonly OrderPlacement $orderPlacement,
+        private readonly AttemptRecovery $recovery,
         private readonly DateTime $dateTime,
         private readonly StaleAttemptPolicy $stalePolicy
     ) {
@@ -141,7 +141,7 @@ class ResolveAttempt extends Command
         }
 
         if ($outcome === AttemptRepositoryInterface::OUTCOME_PLACED) {
-            $order = $this->findOrder($orderNumber, $attempt->storeId);
+            $order = $this->orderPlacement->findOrder($orderNumber, $attempt->storeId);
             if ($order === null) {
                 return $this->refuse($output, sprintf(
                     'No order #%s exists in store %d, the store of the attempt.',
@@ -161,7 +161,7 @@ class ResolveAttempt extends Command
                 'order_id' => $orderId > 0 ? $orderId : null,
             ];
         } else {
-            $order = $this->findOrder($attempt->reservedIncrementId, $attempt->storeId);
+            $order = $this->orderPlacement->findOrder($attempt->reservedIncrementId, $attempt->storeId);
             if ($order !== null && $this->mismatch($order, $attempt) === null) {
                 return $this->refuse($output, sprintf(
                     'Order #%1$s was placed with %2$s for this attempt. Resolve the attempt as placed instead:'
@@ -179,6 +179,11 @@ class ResolveAttempt extends Command
                 'The attempt changed while it was being resolved. Check it again with %s.',
                 ListAttempts::NAME
             ));
+        }
+
+        if ($outcome === AttemptRepositoryInterface::OUTCOME_PLACED) {
+            // As the escalation job does: a placement that died after saving the order may have left the cart active.
+            $this->orderPlacement->deactivateQuoteById($attempt->quoteId);
         }
 
         $this->reportResolved($output, $attempt, $outcome, $orderNumber);
@@ -276,26 +281,13 @@ class ResolveAttempt extends Command
                 $attempt->paymentMethod
             );
         }
-
-        return null;
-    }
-
-    /**
-     * The order with this increment id in a store (unique in Magento).
-     *
-     * @param string $incrementId
-     * @param int $storeId
-     * @return OrderInterface|null
-     */
-    private function findOrder(string $incrementId, int $storeId): ?OrderInterface
-    {
-        $criteria = $this->searchCriteriaBuilder
-            ->addFilter(OrderInterface::INCREMENT_ID, $incrementId)
-            ->addFilter(OrderInterface::STORE_ID, $storeId)
-            ->setPageSize(1)
-            ->create();
-        foreach ($this->orderRepository->getList($criteria)->getItems() as $order) {
-            return $order;
+        if (!$this->recovery->belongsTo($order, $attempt)) {
+            return sprintf(
+                'Order #%s was placed from this cart with %s, but by another checkout attempt. Resolve that attempt'
+                . ' instead; if Affirm authorized this one as well, void it at Affirm and resolve it as voided.',
+                (string) $order->getIncrementId(),
+                $attempt->paymentMethod
+            );
         }
 
         return null;

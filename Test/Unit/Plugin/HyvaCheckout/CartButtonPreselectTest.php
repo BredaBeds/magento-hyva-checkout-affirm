@@ -223,7 +223,7 @@ class CartButtonPreselectTest extends TestCase
             ->willThrowException(new LocalizedException(new Phrase('The requested Payment Method is not available.')));
         $this->session->expects($this->never())->method('replaceQuote');
         $this->logger->expects($this->once())->method('warning')
-            ->with($this->stringContains('could not be applied'), $this->arrayHasKey('error'));
+            ->with($this->stringContains('could not be applied'), $this->equalTo(['exception_class' => LocalizedException::class]));
 
         $this->plugin->beforeBoot($this->methodList);
 

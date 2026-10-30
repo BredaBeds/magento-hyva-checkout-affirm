@@ -80,9 +80,33 @@ class ClientServiceAttemptTracker
 
         if (is_array($result) && ($result['status'] ?? null) === 'authorized') {
             $this->recordTransactionId($attemptId, $result['id'] ?? null);
+        } elseif ($this->isRefusal($result)) {
+            // Affirm refused the request and created no transaction: the placement fails like one that never
+            // reached Affirm, instead of leaving the cart blocked for review.
+            $this->attempts->transition($attemptId, [State::AUTHORIZING], State::PLACING);
         }
 
         return $result;
+    }
+
+    /**
+     * Whether Affirm answered the authorize request with a definite refusal (an error body, no transaction).
+     *
+     * Affirm's client returns 4xx error bodies ({status_code, type, code, message}) instead of throwing. 408
+     * (timeout) and 409 (conflict, for example an already authorized checkout) do not prove that nothing was
+     * authorized, so they keep the attempt for review, as do 5xx answers and transport errors.
+     *
+     * @param mixed $result
+     * @return bool
+     */
+    private function isRefusal(mixed $result): bool
+    {
+        if (!is_array($result) || isset($result['id']) || !is_numeric($result['status_code'] ?? null)) {
+            return false;
+        }
+        $status = (int) $result['status_code'];
+
+        return $status >= 400 && $status < 500 && $status !== 408 && $status !== 409;
     }
 
     /**

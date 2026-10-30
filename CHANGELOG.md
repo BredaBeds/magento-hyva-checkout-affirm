@@ -5,6 +5,41 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+### Fixed
+
+- `metadata.platform_integration` reported 0.1.0 after the 0.1.1 release (and CI failed): the version is now read
+  from Composer's record of the installed package, so a release needs no code change.
+- An authorization that Affirm refuses outright (HTTP 4xx other than 408/409, no transaction) no longer leaves the
+  attempt `uncertain` with the cart blocked and an admin alert: it fails like a placement that never reached Affirm,
+  and the shopper may pay again.
+- A timeout, network error, HTTP 5xx or 429 while reading the checkout back from Affirm no longer fails a checkout
+  Affirm approved: the attempt stays open and the redirect return retries with its token until the attempt expires.
+- The in-progress return page keeps the token while it refreshes, so a placement handed back after a cart lock can
+  still be confirmed.
+- Parallel preparations can no longer leave two open attempts on one cart: a new attempt supersedes every other open
+  attempt of the cart in one update.
+- `hyva:affirm:attempt:resolve --outcome=placed` accepts only an order that carries this attempt's id (the rule the
+  escalation job uses) and deactivates the cart, as the escalation job does.
+- Hyvä Checkout 3: Place Order no longer hangs when a Magewire request fails (the payment script uses
+  `hyvaCheckout.misc.call()` when available), and errors the script already showed no longer get Hyvä's generic
+  "Something went wrong" message as well (`handleException()`).
+- Two log lines carried exception messages; they now log the exception class only, like the rest of the module.
+
+### Changed
+
+- `AttemptRepositoryInterface`: `findLatestForQuote()` replaced by `supersedeOthersForQuote()`; the unused
+  `markResolved()` removed. Unused `PlacementContext::isPlacing()` and `ViewModel\Method::getTitle()` removed.
+- Requires `composer-runtime-api ^2.0`.
+- README rewritten in plain language; the technical detail moved to `docs/reference.md`.
+
+## [0.1.1] - 2026-10-27
+
+### Changed
+
+- Allow Hyvä Checkout `^3.0` alongside `^1.3.14` (Magewire `^1.13.3 || ^3.7.2`).
+
+## [0.1.0] - 2026-10-08
+
 ### Added
 
 - Initial module skeleton, licence files and CI harness.

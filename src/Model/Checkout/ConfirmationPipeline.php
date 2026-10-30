@@ -146,6 +146,20 @@ class ConfirmationPipeline implements ConfirmationPipelineInterface
                 // No request was made, so nothing is known about the attempt: leave it open for the real return.
                 return $this->failure(Attempt::REASON_VERIFICATION_FAILED, $attempt->quoteId);
             }
+            if ($verification->isTemporary()) {
+                // Affirm could not answer; the checkout it approved stays valid. Leave the attempt open: the
+                // redirect return retries with its token, until the attempt expires.
+                $this->logger->warning('Affirm checkout: Affirm could not be reached to confirm the checkout.', [
+                    'reason' => $verification->reason,
+                    'order_reference' => $attempt->reservedIncrementId,
+                ]);
+
+                return ConfirmationOutcome::inProgress(
+                    $this->message(ConfirmationOutcome::REASON_RETRY),
+                    $attempt->quoteId,
+                    ConfirmationOutcome::REASON_RETRY
+                );
+            }
             $this->logger->warning('Affirm checkout: Affirm did not confirm the checkout.', [
                 'reason' => $verification->reason,
                 'order_reference' => $attempt->reservedIncrementId,

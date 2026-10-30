@@ -16,19 +16,15 @@ class PlacementContextTest extends TestCase
     {
         $context = new PlacementContext();
         $this->assertNull($context->current());
-        $this->assertFalse($context->isPlacing(42));
 
         $context->begin('attempt', 42, '000000123');
         $this->assertSame(
             ['attempt_id' => 'attempt', 'quote_id' => 42, 'reserved_increment_id' => '000000123'],
             $context->current()
         );
-        $this->assertTrue($context->isPlacing(42));
-        $this->assertFalse($context->isPlacing(43));
 
         $context->end();
         $this->assertNull($context->current());
-        $this->assertFalse($context->isPlacing(42));
         $context->end();
 
         // The reserved number is optional and does not survive into the next placement.

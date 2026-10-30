@@ -41,7 +41,7 @@ file with the upstream signature (check the installed code of the oldest support
 - **js**: `node --test Test/js/*.test.mjs` on Node 20.
 
 Licensed runs (Hyvä Checkout integration, sandbox and Playwright tests on a real store) are not part of public
-CI; they are recorded per release in the module's README.
+CI; they are summarised in the module's README.
 
 ## Running it locally
 

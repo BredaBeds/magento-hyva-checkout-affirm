@@ -16,7 +16,9 @@ import {describe, it} from 'node:test';
 // Magewire 1 (Livewire 2) and Magewire 3 both return the component's $wire proxy from Magewire.find(): actions
 // are called as methods and public properties read as properties. Magewire 1 throws for a component that is
 // not on the page and answers an unknown property with a server-call function, which reads never call.
-const createWireBridge = (getMagewire, componentId) => {
+// Hyvä Checkout 3 adds hyvaCheckout.misc.call(): a plain Magewire 3 action call never settles when its request
+// fails, misc.call() rejects instead, so Place Order cannot hang. Older releases have no misc.call().
+const createWireBridge = (getMagewire, componentId, getMisc = () => null) => {
     const find = () => {
         try {
             const magewire = getMagewire();
@@ -37,7 +39,8 @@ const createWireBridge = (getMagewire, componentId) => {
         if (!wire || typeof wire[method] !== 'function') {
             throw new Error(`Magewire component "${componentId}" is not available.`);
         }
-        await wire[method]();
+        const misc = getMisc();
+        await (misc && typeof misc.call === 'function' ? misc.call(wire, method) : wire[method]());
         return (property) => read(wire, property);
     };
     return {find, read, call};
@@ -259,5 +262,39 @@ describe('bridge reads', () => {
     it('return null when neither the property nor get() has a value', () => {
         const wire = {attemptId: () => undefined};
         assert.equal(createWireBridge(() => null, COMPONENT_ID).read(wire, 'attemptId'), null);
+    });
+});
+
+describe('bridge with hyvaCheckout.misc.call() (Hyvä Checkout 3)', () => {
+    it('sends the action through misc.call() and reads the properties it set', async () => {
+        const stub = magewire3();
+        const sent = [];
+        const misc = {call: (wire, method) => {
+            sent.push(method);
+            return wire[method]();
+        }};
+        const bridge = createWireBridge(() => stub.Magewire, COMPONENT_ID, () => misc);
+
+        const read = await bridge.call('prepareCheckout');
+
+        assert.deepEqual(sent, ['prepareCheckout']);
+        assert.equal(read('attemptId'), 'a'.repeat(64));
+    });
+
+    it('rejects when misc.call() rejects for a failed request', async () => {
+        const stub = magewire3();
+        const misc = {call: () => Promise.reject(new Error('The request of prepareCheckout() failed.'))};
+        const bridge = createWireBridge(() => stub.Magewire, COMPONENT_ID, () => misc);
+
+        await assert.rejects(bridge.call('prepareCheckout'), /failed/);
+    });
+
+    it('calls the action directly when misc has no call() (Hyvä Checkout 1.3)', async () => {
+        const stub = magewire1();
+        const bridge = createWireBridge(() => stub.Magewire, COMPONENT_ID, () => ({mergeObjects: () => ({})}));
+
+        await bridge.call('prepareCheckout');
+
+        assert.deepEqual(stub.component.calls, ['prepareCheckout']);
     });
 });

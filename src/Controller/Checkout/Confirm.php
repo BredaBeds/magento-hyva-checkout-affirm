@@ -124,8 +124,10 @@ class Confirm implements HttpGetActionInterface, HttpPostActionInterface, CsrfAw
         if ($outcome->isFailed()) {
             return $this->toPaymentStep($outcome->message);
         }
-        if ($checkoutToken !== '' && $outcome->reason !== ConfirmationOutcome::REASON_RETRY) {
-            // Following this attempt no longer needs the token: keep it out of the address bar and history.
+        if ($checkoutToken !== '' && !$outcome->isInProgress()) {
+            // Following this attempt no longer needs the token: keep it out of the address bar and history. While
+            // the attempt is in progress the page refreshes with the token, because a placement that hands the
+            // attempt back (cart locked, Affirm unreachable) needs it again.
             return $this->redirect($this->confirmUrl($attemptId, ''));
         }
 

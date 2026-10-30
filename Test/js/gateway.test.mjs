@@ -222,6 +222,7 @@ const page = ({actions = {}, affirm = fakeAffirm(), loadFails = false, storageFa
     return {
         window,
         document,
+        hyvaCheckout,
         affirm,
         magewire,
         notices,
@@ -266,7 +267,7 @@ describe('registration', () => {
     it('registers affirm_gateway and the Alpine component', () => {
         const p = page();
         assert.equal(p.code(), 'affirm_gateway');
-        for (const name of ['initialize', 'uninitialize', 'placeOrder']) {
+        for (const name of ['initialize', 'uninitialize', 'placeOrder', 'handleException']) {
             assert.equal(typeof p.method()[name], 'function');
         }
         assert.equal(typeof p.mount().destroy, 'function');
@@ -397,6 +398,45 @@ describe('modal Place Order', () => {
         p.affirm.options.onSuccess({checkout_token: 'TOKEN_1'});
         await assert.rejects(placing, /could not be placed/);
         assert.deepEqual(p.storage.slice(-1), [['attempt_id', null, 'payment']]);
+    });
+
+    it('calls the server through hyvaCheckout.misc.call() when Hyvä Checkout 3 provides it', async () => {
+        const p = page({actions: {prepareCheckout: prepared('modal')}});
+        const viaMisc = [];
+        p.hyvaCheckout.misc = {call: async (wire, method) => {
+            viaMisc.push(method);
+            return wire[method]();
+        }};
+        p.method().placeOrder({fallback: async () => {}});
+        await settle();
+        assert.deepEqual(viaMisc, ['prepareCheckout']);
+        assert.deepEqual(p.affirm.calls.map((call) => call[0]), ['reset', 'checkout', 'open']);
+    });
+
+    it('reports a failed request that hyvaCheckout.misc.call() rejects', async () => {
+        const p = page({actions: {prepareCheckout: prepared('modal')}});
+        p.hyvaCheckout.misc = {call: () => Promise.reject(new Error('The request of prepareCheckout() failed.'))};
+        await assert.rejects(p.method().placeOrder({fallback: async () => {}}), /unavailable/);
+        assert.deepEqual(p.notices.at(-1), ['error', MESSAGES.unavailable]);
+        assert.deepEqual(p.affirm.calls, []);
+    });
+
+    it('keeps reported errors out of Hyvä Checkout 3 handleException() and passes the rest on', async () => {
+        const p = page({actions: {prepareCheckout: prepared('modal')}});
+        const placing = p.method().placeOrder({fallback: async () => {}});
+        await settle();
+        p.affirm.options.onFail({reason: 'canceled'});
+        const reported = await placing.catch((error) => error);
+
+        const handled = [];
+        const fallback = async ({exception}) => handled.push(exception);
+        await p.method().handleException({exception: reported, fallback});
+        assert.deepEqual(handled, []);
+
+        const other = new Error('The order could not be placed.');
+        await p.method().handleException({exception: other, fallback});
+        assert.deepEqual(handled, [other]);
+        await p.method().handleException({exception: other, fallback: null});
     });
 
     it('reports blocked browser storage', async () => {

@@ -58,7 +58,9 @@ $json = json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_
     // Magewire 1 (Livewire 2) and Magewire 3 both return the component's $wire proxy from Magewire.find(): actions
     // are called as methods and public properties read as properties. Magewire 1 throws for a component that is
     // not on the page and answers an unknown property with a server-call function, which reads never call.
-    const createWireBridge = (getMagewire, componentId) => {
+    // Hyvä Checkout 3 adds hyvaCheckout.misc.call(): a plain Magewire 3 action call never settles when its request
+    // fails, misc.call() rejects instead, so Place Order cannot hang. Older releases have no misc.call().
+    const createWireBridge = (getMagewire, componentId, getMisc = () => null) => {
         const find = () => {
             try {
                 const magewire = getMagewire();
@@ -79,14 +81,15 @@ $json = json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_
             if (!wire || typeof wire[method] !== 'function') {
                 throw new Error(`Magewire component "${componentId}" is not available.`);
             }
-            await wire[method]();
+            const misc = getMisc();
+            await (misc && typeof misc.call === 'function' ? misc.call(wire, method) : wire[method]());
             return (property) => read(wire, property);
         };
         return {find, read, call};
     };
     /* bridge:end */
 
-    const bridge = createWireBridge(() => window.Magewire, config.componentId);
+    const bridge = createWireBridge(() => window.Magewire, config.componentId, () => hyvaCheckout.misc);
     const components = new Set();
     let active = false;
 
@@ -116,11 +119,14 @@ $json = json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_
         setTimeout(attempt, 0);
     };
 
-    // Shows the reason in the payment messenger (role="alert") and returns the error placeOrder() rejects with.
+    // Shows the reason in the payment messenger (role="alert") and returns the error placeOrder() rejects with,
+    // marked as reported so handleException() does not add a second, generic message.
     const failure = (text, focus, type) => {
         notify(text, type);
         restoreFocus(focus);
-        return new Error(text);
+        const error = new Error(text);
+        error.hyvaAffirmReported = true;
+        return error;
     };
 
     const setStorage = (key, value) => hyvaCheckout.storage.setValue(key, value, config.storage.group);
@@ -322,6 +328,17 @@ $json = json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_
                     throw failure(messages.storage, focus);
                 }
                 return submit(fallback, focus);
+            },
+
+            // Hyvä Checkout 3 passes every error of placeOrder() here, and its default shows a generic message.
+            // Errors this script already reported stay quiet; anything else goes to Hyvä's own handling.
+            async handleException({exception, fallback}) {
+                if (exception && exception.hyvaAffirmReported) {
+                    return;
+                }
+                if (typeof fallback === 'function') {
+                    await fallback({exception});
+                }
             },
         },
     });

@@ -104,7 +104,7 @@ class CartButtonPreselect
             // Never break the payment step: Magewire would skip the list's own boot() after an exception here.
             $this->logger->warning(
                 'Hyva_CheckoutAffirm: the cart button choice of Affirm could not be applied.',
-                ['error' => get_class($e) . ': ' . $e->getMessage()]
+                ['exception_class' => get_class($e)]
             );
         }
 

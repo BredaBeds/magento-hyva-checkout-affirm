@@ -83,15 +83,4 @@ class PlacementContext
             'reserved_increment_id' => $this->reservedIncrementId,
         ];
     }
-
-    /**
-     * Whether the order of this quote is being placed by the pipeline in this request.
-     *
-     * @param int $quoteId
-     * @return bool
-     */
-    public function isPlacing(int $quoteId): bool
-    {
-        return $this->quoteId !== null && $this->quoteId === $quoteId;
-    }
 }

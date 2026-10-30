@@ -605,6 +605,24 @@ class ConfirmationPipelineTest extends TestCase
         $this->assertLogged('warning', VerificationResult::REASON_NOT_CONFIRMED);
     }
 
+    public function testAffirmOutageLeavesTheAttemptOpenForARetry(): void
+    {
+        $reasons = [VerificationResult::REASON_TRANSPORT_ERROR, VerificationResult::REASON_SERVICE_UNAVAILABLE];
+        foreach ($reasons as $reason) {
+            $this->store(State::INITIATED);
+            $this->verification = VerificationResult::failure($reason);
+
+            $outcome = $this->confirm($this->quote);
+
+            $this->assertTrue($outcome->isInProgress(), $reason);
+            $this->assertSame(ConfirmationOutcome::REASON_RETRY, $outcome->reason);
+            $this->assertSame(State::INITIATED, $this->stored()->state);
+            $this->assertSame([], $this->transitions);
+            $this->assertSame(0, $this->placementCalls);
+            $this->assertLogged('warning', $reason);
+        }
+    }
+
     public function testMalformedTokenLeavesTheAttemptOpen(): void
     {
         $this->store(State::INITIATED);
@@ -1158,7 +1176,7 @@ class ConfirmationPipelineTest extends TestCase
                 return ($this->rows)()[$attemptId] ?? null;
             }
 
-            public function findLatestForQuote(int $quoteId): ?Attempt
+            public function supersedeOthersForQuote(int $quoteId, string $keepAttemptId): int
             {
                 throw new LogicException('Not used by the pipeline.');
             }
@@ -1233,16 +1251,6 @@ class ConfirmationPipelineTest extends TestCase
             public function prune(int $olderThanDays): int
             {
                 return 0;
-            }
-
-            public function markResolved(
-                string $attemptId,
-                string $outcome,
-                ?string $orderIncrementId = null,
-                ?int $orderId = null,
-                bool $includeStuck = false
-            ): bool {
-                return false;
             }
         };
     }
