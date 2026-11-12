@@ -541,6 +541,18 @@ Observed in Affirm's US sandbox on 2026-10-08; see Affirm's
 - Return URLs carry checkout tokens: switch off browser traces, videos and screenshots that record URLs in test
   automation, or mask the tokens.
 
+## Operations notes
+
+- **Attempts that need review** (README "When a payment needs review"): `bin/magento hyva:affirm:attempt:resolve
+  --help` prints the procedure. With `--outcome=placed` the command checks that the order belongs to the attempt and
+  closes the cart.
+- **Turning the module off** removes the log redaction with it, and keeps the attempt table.
+- **Another icon:** override the `metadata` argument of the block `checkout.payment.method.affirm_gateway` in your
+  theme's `hyva_checkout_components.xml`. The bundled SVG is Affirm's trademark, included with Affirm's permission
+  only to identify Affirm as the payment method (`TRADEMARKS.md`).
+- **Not yet tested in a browser:** Magento 2.4.6 and 2.4.8, PHP 8.1 – 8.4, CAD stores, virtual-only and
+  bundle/configurable carts (covered by unit tests), keyboard use inside Affirm's own modal, and Hyvä Checkout 3.
+
 ## Known upstream issues
 
 ### Affirm extension 4.0.11

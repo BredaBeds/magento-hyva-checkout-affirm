@@ -30,7 +30,8 @@ All notable changes to this project are documented in this file. The format foll
 - `AttemptRepositoryInterface`: `findLatestForQuote()` replaced by `supersedeOthersForQuote()`; the unused
   `markResolved()` removed. Unused `PlacementContext::isPlacing()` and `ViewModel\Method::getTitle()` removed.
 - Requires `composer-runtime-api ^2.0`.
-- README rewritten in plain language; the technical detail moved to `docs/reference.md`.
+- README rewritten in plain language and condensed; the technical detail and the operations notes are in
+  `docs/reference.md`.
 
 ## [0.1.1] - 2026-10-27
 
