@@ -2,7 +2,7 @@
     "name": "bredabeds/magento-hyva-checkout-affirm",
     "description": "Hyvä Checkout integration for Affirm's Magento 2 extension (affirm/magento2): Affirm as a payment method in Hyvä Checkout, modal and redirect flows",
     "type": "magento2-module",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "license": "MIT",
     "keywords": [
         "magento2",
