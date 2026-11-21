@@ -13,6 +13,7 @@ use Hyva\Theme\ViewModel\HyvaCsp;
 use Magento\Framework\Config\Dom;
 use Magento\Framework\Escaper;
 use Magento\Framework\Exception\NotFoundException;
+use Magento\Framework\Translate\InlineInterface;
 use Magento\Framework\View\Element\Template;
 use PHPUnit\Framework\TestCase;
 
@@ -57,13 +58,29 @@ class ConfirmationViewTest extends TestCase
             $statusBlock->getAttribute('template')
         );
 
-        $refresh = $xpath->query(sprintf(
-            '//referenceBlock[@name="head.additional"]/block[@name="%s"]/arguments/argument[@name="text"]',
-            Confirm::REFRESH_BLOCK
-        ));
+        $refresh = $xpath->query(
+            sprintf('//referenceContainer[@name="content"]/block[@name="%s"]', Confirm::REFRESH_BLOCK)
+        );
         $this->assertNotFalse($refresh);
         $this->assertCount(1, $refresh);
-        $this->assertSame('<meta http-equiv="refresh" content="3">', trim((string) $refresh->item(0)?->textContent));
+        $refreshBlock = $refresh->item(0);
+        $this->assertInstanceOf(\DOMElement::class, $refreshBlock);
+        $this->assertSame(
+            'Hyva_CheckoutAffirm::checkout/attempt/status-check.phtml',
+            $refreshBlock->getAttribute('template')
+        );
+        $this->assertSame(Confirm::STATUS_BLOCK, $refreshBlock->getAttribute('after'));
+    }
+
+    public function testConfirmPageNeverReloadsItselfOnATimer(): void
+    {
+        // WCAG 2.2.1 (failure F41): the wait is followed in the background, not with a meta refresh.
+        $layout = (string) file_get_contents(self::VIEW . '/layout/hyva_affirm_checkout_confirm.xml');
+        $this->assertStringNotContainsStringIgnoringCase('http-equiv', $layout);
+        foreach (['in-progress', 'status-check'] as $template) {
+            $source = (string) file_get_contents(self::VIEW . '/templates/checkout/attempt/' . $template . '.phtml');
+            $this->assertStringNotContainsStringIgnoringCase('http-equiv="refresh"', $source, $template);
+        }
     }
 
     public function testSuccessPageBlockRendersBeforeThePageJsDependencies(): void
@@ -81,7 +98,12 @@ class ConfirmationViewTest extends TestCase
 
     public function testEveryInlineScriptIsRegisteredForCsp(): void
     {
-        foreach (['checkout/attempt/in-progress.phtml', 'checkout/success/cart-refresh.phtml'] as $template) {
+        $templates = [
+            'checkout/attempt/in-progress.phtml',
+            'checkout/attempt/status-check.phtml',
+            'checkout/success/cart-refresh.phtml',
+        ];
+        foreach ($templates as $template) {
             $source = (string) file_get_contents(self::VIEW . '/templates/' . $template);
             $this->assertStringStartsWith("<?php declare(strict_types=1);\n", $source, $template);
             $scripts = substr_count($source, '</script>');
@@ -103,13 +125,33 @@ class ConfirmationViewTest extends TestCase
             'status' => 'in_progress',
             'message' => 'Being <confirmed>',
             'order_reference' => '000000123',
+            'retry_url' => 'https://shop.test/hyva_affirm/checkout/confirm/attempt/abc/?checkout_token=T&x=1',
         ]);
 
         $this->assertStringContainsString('role="status"', $html);
         $this->assertStringContainsString('Being &lt;confirmed&gt;', $html);
-        $this->assertStringContainsString('refreshes automatically', $html);
+        $this->assertStringContainsString('see whether your order has been placed', $html);
+        $this->assertStringContainsString('data-affirm-attempt-note', $html);
+        $this->assertStringContainsString(
+            '<a href="https://shop.test/hyva_affirm/checkout/confirm/attempt/abc/?checkout_token=T&amp;x=1"',
+            $html,
+            'The wait can always be followed by hand.'
+        );
+        $this->assertStringContainsString('Check the status now', $html);
         $this->assertStringNotContainsString('000000123', $html);
         $this->assertStringContainsString("addEventListener('pageshow'", $html);
+    }
+
+    public function testStatusCheckAsksInTheBackgroundAndLoadsThePageOnlyWhenTheWaitEnds(): void
+    {
+        $html = $this->render('checkout/attempt/status-check.phtml', []);
+
+        $this->assertStringContainsString("url.searchParams.set('poll', '1')", $html);
+        $this->assertStringContainsString('(await response.json()).in_progress !== false', $html);
+        $this->assertStringContainsString('window.location.replace(window.location.href)', $html);
+        $this->assertStringContainsString("document.querySelector('[data-affirm-attempt-note]')", $html);
+        $this->assertStringContainsString("const checking = 'We\\u0020check\\u0020every", $html);
+        $this->assertStringContainsString("const slow = 'This\\u0020is\\u0020taking\\u0020longer", $html);
     }
 
     public function testWaitingForReviewPageShowsTheOrderReferenceAndDoesNotPromiseARefresh(): void
@@ -121,7 +163,8 @@ class ConfirmationViewTest extends TestCase
         ]);
 
         $this->assertStringContainsString('#000000123', $html);
-        $this->assertStringNotContainsString('refreshes automatically', $html);
+        $this->assertStringNotContainsString('data-affirm-attempt-note', $html);
+        $this->assertStringNotContainsString('Check the status now', $html);
     }
 
     public function testCartRefreshExpiresTheSectionCookieAndRequestsAReload(): void
@@ -154,7 +197,10 @@ class ConfirmationViewTest extends TestCase
             ->onlyMethods(['toHtml'])
             ->getMock();
         $block->setData($data);
+        // escapeUrl() asks the inline translator, which Magento would fetch from the object manager.
         $escaper = new Escaper();
+        (new \ReflectionProperty(Escaper::class, 'translateInline'))
+            ->setValue($escaper, $this->createMock(InlineInterface::class));
         $variables = ['block' => $block, 'escaper' => $escaper];
         if ($withCsp) {
             $csp = $this->createMock(HyvaCsp::class);

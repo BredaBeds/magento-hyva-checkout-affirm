@@ -14,6 +14,8 @@ use Hyva\CheckoutAffirm\Model\Checkout\PrivateContentInvalidator;
 use Hyva\CheckoutAffirm\Model\Checkout\SuccessSession;
 use Magento\Framework\App\Request\Http;
 use Magento\Framework\App\RequestInterface;
+use Magento\Framework\Controller\Result\Json;
+use Magento\Framework\Controller\Result\JsonFactory;
 use Magento\Framework\Controller\Result\Redirect;
 use Magento\Framework\Controller\Result\RedirectFactory;
 use Magento\Framework\Message\ManagerInterface;
@@ -64,6 +66,11 @@ class ConfirmTest extends TestCase
      * @var array<string, mixed>
      */
     private array $page = [];
+
+    /**
+     * @var array<string, mixed> the status check's answer: data and headers
+     */
+    private array $json = [];
 
     /**
      * @var list<string>
@@ -164,6 +171,9 @@ class ConfirmTest extends TestCase
             $this->logged[] = [$message, $context];
         });
 
+        $jsonFactory = $this->createMock(JsonFactory::class);
+        $jsonFactory->method('create')->willReturnCallback(fn (): Json => $this->newJson());
+
         $this->controller = new Confirm(
             $request,
             $redirectFactory,
@@ -174,7 +184,8 @@ class ConfirmTest extends TestCase
             $successSession,
             $invalidator,
             $paymentStep,
-            $logger
+            $logger,
+            $jsonFactory
         );
     }
 
@@ -321,8 +332,79 @@ class ConfirmTest extends TestCase
         $this->assertSame([], $this->page['unset']);
         $this->assertSame('in_progress', $this->statusBlock->getData('status'));
         $this->assertSame('Being confirmed.', $this->statusBlock->getData('message'));
+        $this->assertSame(
+            'hyva_affirm/checkout/confirm '
+            . json_encode(['_secure' => true, '_nosid' => true, 'attempt' => self::ATTEMPT_ID]),
+            $this->statusBlock->getData('retry_url'),
+            'The "Check the status now" link asks this URL again.'
+        );
         $this->assertNoStore($this->page);
         $this->assertSame([], $this->redirects);
+    }
+
+    public function testStatusCheckWhileInProgressAnswersKeepWaiting(): void
+    {
+        $this->outcome = ConfirmationOutcome::inProgress('Being confirmed.', 42);
+        $this->params = ['attempt' => self::ATTEMPT_ID, 'checkout_token' => self::TOKEN, 'poll' => '1'];
+
+        $result = $this->controller->execute();
+
+        $this->assertInstanceOf(Json::class, $result);
+        $this->assertSame(['in_progress' => true], $this->json['data']);
+        $this->assertSame([[self::ATTEMPT_ID, self::TOKEN]], $this->pipelineCalls, 'The check drives the attempt too.');
+        $this->assertNoStore($this->json);
+        $this->assertSame([], $this->page, 'No page is built for the check.');
+        $this->assertSame([], $this->redirects);
+    }
+
+    public function testStatusCheckLeavesEveryEndingToTheNextPageLoad(): void
+    {
+        $endings = [
+            'placed' => ConfirmationOutcome::placed(555, '000000123', 42),
+            'failed' => ConfirmationOutcome::failed('declined', 'Affirm declined the payment.', 42),
+            'uncertain' => ConfirmationOutcome::uncertain('We are confirming order #000000123.', 42, '000000123'),
+        ];
+        foreach ($endings as $name => $outcome) {
+            $this->reset();
+            $this->outcome = $outcome;
+            $this->params = ['attempt' => self::ATTEMPT_ID, 'checkout_token' => self::TOKEN, 'poll' => '1'];
+
+            $this->assertInstanceOf(Json::class, $this->controller->execute(), $name);
+            $this->assertSame(['in_progress' => false], $this->json['data'], $name);
+            $this->assertSame([], $this->calls, $name . ': the success page is armed by the page load, once.');
+            $this->assertSame([], $this->errors, $name . ': the message is added by the page load, once.');
+            $this->assertSame([], $this->redirects, $name);
+            $this->assertSame([], $this->page, $name);
+        }
+    }
+
+    public function testStatusCheckThatCannotBeAnsweredStopsTheWait(): void
+    {
+        $this->params = ['attempt' => 'not-an-attempt', 'poll' => '1'];
+
+        $this->assertInstanceOf(Json::class, $this->controller->execute());
+        $this->assertSame(['in_progress' => false], $this->json['data']);
+        $this->assertSame([], $this->pipelineCalls);
+        $this->assertSame([], $this->errors);
+
+        $this->reset();
+        $this->outcome = new RuntimeException('database gone');
+        $this->params = ['attempt' => self::ATTEMPT_ID, 'poll' => '1'];
+
+        $this->assertInstanceOf(Json::class, $this->controller->execute());
+        $this->assertSame(['in_progress' => false], $this->json['data']);
+        $this->assertCount(1, $this->logged);
+        $this->assertSame([], $this->errors, 'The page load that follows reports the problem.');
+        $this->assertSame([], $this->redirects);
+    }
+
+    public function testOnlyTheExactFlagIsAStatusCheck(): void
+    {
+        $this->outcome = ConfirmationOutcome::inProgress('Being confirmed.', 42);
+        $this->params = ['attempt' => self::ATTEMPT_ID, 'poll' => 'yes'];
+
+        $this->assertInstanceOf(Page::class, $this->controller->execute());
+        $this->assertSame([], $this->json);
     }
 
     public function testInProgressKeepsTheTokenForTheRefresh(): void
@@ -393,6 +475,7 @@ class ConfirmTest extends TestCase
         $this->redirects = [];
         $this->calls = [];
         $this->errors = [];
+        $this->json = [];
     }
 
     /**
@@ -435,6 +518,32 @@ class ConfirmTest extends TestCase
         );
 
         return $redirect;
+    }
+
+    /**
+     * A JSON result that records its data and headers.
+     *
+     * @return Json
+     */
+    private function newJson(): Json
+    {
+        $this->json = ['headers' => [], 'data' => null];
+        $json = $this->getMockBuilder(Json::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['setData', 'setHeader'])
+            ->getMock();
+        $json->method('setData')->willReturnCallback(function ($data) use ($json) {
+            $this->json['data'] = $data;
+
+            return $json;
+        });
+        $json->method('setHeader')->willReturnCallback(function (string $name, string $value) use ($json) {
+            $this->json['headers'][$name] = $value;
+
+            return $json;
+        });
+
+        return $json;
     }
 
     /**

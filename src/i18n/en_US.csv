@@ -14,6 +14,7 @@ Affirm payment needs review (order #%1),Affirm payment needs review (order #%1)
 An Affirm window will open to complete your purchase.,An Affirm window will open to complete your purchase.
 Attempt,Attempt
 Authorizing,Authorizing
+Check the status now,Check the status now
 Confirmed by Affirm,Confirmed by Affirm
 Confirming your payment,Confirming your payment
 Created,Created
@@ -43,12 +44,14 @@ This Affirm payment has expired. Please start the payment again.,This Affirm pay
 This Affirm payment is already complete. Please check your e-mail for the order.,This Affirm payment is already complete. Please check your e-mail for the order.
 This Affirm payment was cancelled. Please start the payment again.,This Affirm payment was cancelled. Please start the payment again.
 This Affirm payment was replaced by a newer one. Please start the payment again.,This Affirm payment was replaced by a newer one. Please start the payment again.
-This page refreshes automatically. Please do not close it.,This page refreshes automatically. Please do not close it.
+This is taking longer than usual. We are still checking. Please keep this page open.,This is taking longer than usual. We are still checking. Please keep this page open.
 "To resolve it, look up the payment in the Affirm merchant dashboard by the reserved order number or the Affirm transaction ID. If an order exists, resolve the attempt as placed with that order number; otherwise void the authorization at Affirm and resolve the attempt as voided:","To resolve it, look up the payment in the Affirm merchant dashboard by the reserved order number or the Affirm transaction ID. If an order exists, resolve the attempt as placed with that order number; otherwise void the authorization at Affirm and resolve the attempt as voided:"
 Too many Affirm payment attempts for this cart. Please try again later or use another payment method.,Too many Affirm payment attempts for this cart. Please try again later or use another payment method.
 Uncertain (needs review),Uncertain (needs review)
 Updated,Updated
+Use the link below to see whether your order has been placed.,Use the link below to see whether your order has been placed.
 "We are confirming your Affirm payment for order #%1. Please do not pay again; if you do not receive an order confirmation, contact us with this order number.","We are confirming your Affirm payment for order #%1. Please do not pay again; if you do not receive an order confirmation, contact us with this order number."
+We check every few seconds and take you to your order as soon as it is placed. Please keep this page open.,We check every few seconds and take you to your order as soon as it is placed. Please keep this page open.
 We could not confirm your Affirm payment. Please try again.,We could not confirm your Affirm payment. Please try again.
 "We could not confirm your Affirm payment. Please wait a moment, then try again.","We could not confirm your Affirm payment. Please wait a moment, then try again."
 We could not find this Affirm payment. Please start the payment again.,We could not find this Affirm payment. Please start the payment again.

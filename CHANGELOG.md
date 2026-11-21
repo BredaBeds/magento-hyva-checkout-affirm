@@ -5,6 +5,15 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+### Accessibility
+
+- The in-progress return page no longer reloads itself every three seconds (a `<meta http-equiv="refresh">`, WCAG
+  2.2.1 failure F41: a screen reader started the page again each time). It now asks the confirm URL in the background
+  (`?poll=1`, answered with `{"in_progress": true|false}`) and loads the page anew only when the wait is over. The
+  status box announces when the wait takes longer than usual, and a "Check the status now" link follows the wait by
+  hand, also without script. New template `checkout/attempt/status-check.phtml`; `Controller\Checkout\Confirm` takes
+  a `JsonFactory`.
+
 ### Fixed
 
 - `metadata.platform_integration` reported 0.1.0 after the 0.1.1 release (and CI failed): the version is now read

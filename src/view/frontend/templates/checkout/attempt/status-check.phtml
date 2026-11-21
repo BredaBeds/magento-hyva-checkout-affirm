@@ -1,0 +1,63 @@
+<?php declare(strict_types=1);
+/**
+ * Copyright (c) 2026 Breda Beds. Licensed under the MIT licence; see LICENSE.
+ *
+ * The in-progress page's status check (hyva_affirm_checkout_confirm.xml; removed by the confirm controller when the
+ * attempt waits for the merchant). Every three seconds it asks the page's own URL with ?poll=1, which runs the
+ * confirmation pipeline like a page load and answers {"in_progress": true|false}. The answer false loads the page
+ * anew, once, and that ordinary request shows the receipt, the message or the page that waits for the merchant.
+ * Until then the page stays as it is: a check that fails, or is answered with anything but the status (an error
+ * page), is simply made again, so the page can never fall into reloading itself.
+ *
+ * It replaces a 3 s meta refresh, which reloaded the page under the shopper over and over (WCAG 2.2.1, failure
+ * F41): a screen reader started the page again each time.
+ *
+ * @var \Magento\Framework\View\Element\Template $block
+ * @var \Magento\Framework\Escaper $escaper
+ * @var \Hyva\Theme\ViewModel\HyvaCsp|null $hyvaCsp
+ */
+?>
+<script>
+    (() => {
+        const note = document.querySelector('[data-affirm-attempt-note]');
+        const url = new URL(window.location.href);
+        url.searchParams.set('poll', '1');
+        const checking = '<?= $escaper->escapeJs(__(
+            'We check every few seconds and take you to your order as soon as it is placed. '
+            . 'Please keep this page open.'
+        )) ?>';
+        const slow = '<?= $escaper->escapeJs(__(
+            'This is taking longer than usual. We are still checking. Please keep this page open.'
+        )) ?>';
+        let checks = 0;
+        if (note) {
+            note.textContent = checking;
+        }
+        const check = async () => {
+            let waiting = true;
+            try {
+                const response = await fetch(url, {
+                    headers: {Accept: 'application/json'},
+                    credentials: 'same-origin',
+                    cache: 'no-store'
+                });
+                waiting = !response.ok || (await response.json()).in_progress !== false;
+            } catch (error) {
+                // offline for a moment, or not the status answer (an error page): ask again
+            }
+            if (!waiting) {
+                window.location.replace(window.location.href);
+                return;
+            }
+            checks += 1;
+            if (note && checks === 10) {
+                note.textContent = slow;
+            }
+            window.setTimeout(check, 3000);
+        };
+        window.setTimeout(check, 3000);
+    })();
+</script>
+<?php if (isset($hyvaCsp)) {
+    $hyvaCsp->registerInlineScript();
+} ?>

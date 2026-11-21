@@ -140,7 +140,7 @@ The same pipeline runs for the modal place-order request and for the redirect re
    `failed` or `resolved` → the recorded reason. Past its expiry an open attempt becomes `failed (expired)`. A
    `placing` or `authorizing` attempt that has not changed for 15 minutes (the
    [stale threshold](#escalation-cron)) is reported like `uncertain`: its process died, so the in-progress page stops
-   refreshing and shows the order reference; the escalation job settles the attempt.
+   checking and shows the order reference; the escalation job settles the attempt.
 4. **Cart.** Modal mode uses Hyvä's quote, redirect mode loads the attempt's quote. It must be active, belong to the
    attempt's store (which must also be the current store) and still have Affirm as its payment method. Totals are
    collected again and the snapshot hash (items, quantities, row totals, both addresses, shipping method, payment
@@ -149,7 +149,7 @@ The same pipeline runs for the modal place-order request and for the redirect re
    otherwise `failed (unavailable)`.
 6. **Verification at Affirm** (see below). Nothing is written before it. A malformed token causes no request and
    leaves the attempt open. When Affirm cannot answer (timeout, network error, HTTP 5xx or 429) the attempt also
-   stays open and the outcome is "in progress, retry": the redirect return's page refreshes with its token until
+   stays open and the outcome is "in progress, retry": the redirect return's page checks again with its token until
    Affirm answers or the attempt expires. Any other failure → `failed (verification_failed)`.
 7. **Confirm:** `initiated → confirmed` with the token hash (a retry with the same token is accepted).
 8. **Claim:** `confirmed → placing` where the token hash matches. The loser of a race gets "in progress" or the
@@ -242,11 +242,17 @@ error cannot stop every payment method of the store. There is no automatic autho
   also after Magento's success page has cleared them. The module dispatches no events on a replay, but Magento's
   success page fires its usual `checkout_onepage_controller_success_action` observers (often analytics) again on
   each visit.
-- **In-progress page.** While another request places the order, the confirm URL renders "Confirming your payment"
-  with a `<meta http-equiv="refresh" content="3">` (no script needed under a strict CSP) and reloads when restored
-  from the back-forward cache. The page keeps the token in its URL while it refreshes, because a placement that
-  hands the attempt back (cart locked, Affirm unreachable) needs it again. An `uncertain` attempt is first
-  redirected to the same URL without the token, then shows the order reference and no refresh.
+- **In-progress page.** While another request places the order, the confirm URL renders "Confirming your payment".
+  The page is not reloaded while it waits (WCAG 2.2.1): every three seconds its script
+  (`checkout/attempt/status-check.phtml`, registered for CSP) asks the same URL with `?poll=1` and loads the page
+  anew only on the answer `false` (a failed check is made again, never answered with a reload). That request runs
+  the confirmation like a page load, but answers only `{"in_progress": true|false}` and leaves every ending (the
+  receipt, a message, the page that waits for the merchant) to the ordinary request the page makes next, so nothing
+  is armed or reported twice. The status box (`role="status"`) says so when the wait passes half a minute, and a
+  "Check the status now" link requests the page by hand, which is also how the wait is followed without script.
+  The page reloads when restored from the back-forward cache. It keeps the token in its URL while it waits, because
+  a placement that hands the attempt back (cart locked, Affirm unreachable) needs it again. An `uncertain` attempt
+  is first redirected to the same URL without the token, then shows the order reference and does not check.
 - **Success-page cart refresh.** A GET return does not renew Magento's `private_content_version` cookie, so the
   controller sets a fresh one, and a block on the Hyvä success page deletes `mage-cache-sessid` and dispatches
   `reload-customer-section-data` (Hyvä's documented forced refresh). The minicart is therefore empty on the success

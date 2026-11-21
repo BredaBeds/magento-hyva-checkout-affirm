@@ -10,19 +10,18 @@
         <meta name="robots" content="NOINDEX,NOFOLLOW"/>
     </head>
     <body>
-        <!-- Re-requests the same URL while another request places the order; works without script (strict CSP).
-             The confirm controller removes it when the attempt waits for the merchant. -->
-        <referenceBlock name="head.additional">
-            <block class="Magento\Framework\View\Element\Text" name="hyva.affirm.checkout.attempt.refresh">
-                <arguments>
-                    <argument name="text" xsi:type="string"><![CDATA[<meta http-equiv="refresh" content="3">]]></argument>
-                </arguments>
-            </block>
-        </referenceBlock>
         <referenceContainer name="content">
             <block name="hyva.affirm.checkout.attempt.status"
                    template="Hyva_CheckoutAffirm::checkout/attempt/in-progress.phtml"
                    cacheable="false"/>
+            <!-- While another request places the order, asks the confirm URL again in the background (?poll=1) and
+                 loads the page anew only once the answer is no longer "in progress": the page is not reloaded
+                 under the shopper while it waits (WCAG 2.2.1; it used to be a 3 s meta refresh). Without script
+                 the status block's "Check the status now" link does the same by hand. The confirm controller
+                 removes this block when the attempt waits for the merchant. -->
+            <block name="hyva.affirm.checkout.attempt.refresh"
+                   template="Hyva_CheckoutAffirm::checkout/attempt/status-check.phtml"
+                   after="hyva.affirm.checkout.attempt.status"/>
         </referenceContainer>
     </body>
 </page>

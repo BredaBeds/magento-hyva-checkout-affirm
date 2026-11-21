@@ -19,6 +19,8 @@ use Magento\Framework\App\Request\Http as HttpRequest;
 use Magento\Framework\App\Request\InvalidRequestException;
 use Magento\Framework\App\RequestInterface;
 use Magento\Framework\Controller\AbstractResult;
+use Magento\Framework\Controller\Result\Json;
+use Magento\Framework\Controller\Result\JsonFactory;
 use Magento\Framework\Controller\Result\Redirect;
 use Magento\Framework\Controller\Result\RedirectFactory;
 use Magento\Framework\Controller\ResultInterface;
@@ -33,7 +35,9 @@ use Psr\Log\LoggerInterface;
  * Return URL of the redirect flow: hyva_affirm/checkout/confirm/attempt/<id>?checkout_token=<token>.
  *
  * GET runs the confirmation pipeline and answers with the success page, the in-progress page (hyva_affirm_
- * checkout_confirm handle) or the payment step with a message. A POST (Affirm's default action) changes nothing:
+ * checkout_confirm handle) or the payment step with a message. The in-progress page asks again in the background
+ * with ?poll=1: that request runs the pipeline too and answers only whether to keep waiting (JSON), so the page is
+ * never reloaded under the shopper while it waits (WCAG 2.2.1). A POST (Affirm's default action) changes nothing:
  * the browser does not send the SameSite=Lax session cookie with a cross-site POST, so it is answered with a 303
  * to the same URL as a GET, which carries the shopper's cookies.
  *
@@ -44,6 +48,7 @@ class Confirm implements HttpGetActionInterface, HttpPostActionInterface, CsrfAw
     public const ROUTE = 'hyva_affirm/checkout/confirm';
     public const STATUS_BLOCK = 'hyva.affirm.checkout.attempt.status';
     public const REFRESH_BLOCK = 'hyva.affirm.checkout.attempt.refresh';
+    public const POLL_PARAM = 'poll';
 
     private const SUCCESS_ROUTE = 'checkout/onepage/success';
     private const TOKEN_PARAMS = ['checkout_token', 'checkout_id'];
@@ -60,6 +65,7 @@ class Confirm implements HttpGetActionInterface, HttpPostActionInterface, CsrfAw
      * @param PrivateContentInvalidator $privateContentInvalidator
      * @param PaymentStep $paymentStep
      * @param LoggerInterface $logger
+     * @param JsonFactory $jsonFactory
      */
     public function __construct(
         private readonly HttpRequest $request,
@@ -71,14 +77,15 @@ class Confirm implements HttpGetActionInterface, HttpPostActionInterface, CsrfAw
         private readonly SuccessSession $successSession,
         private readonly PrivateContentInvalidator $privateContentInvalidator,
         private readonly PaymentStep $paymentStep,
-        private readonly LoggerInterface $logger
+        private readonly LoggerInterface $logger,
+        private readonly JsonFactory $jsonFactory
     ) {
     }
 
     /**
      * Confirm the attempt (GET) or bounce a POST to the GET URL.
      *
-     * @return ResultInterface a redirect, or the in-progress page
+     * @return ResultInterface a redirect, the in-progress page, or the answer to the page's status check
      */
     public function execute(): ResultInterface
     {
@@ -89,8 +96,11 @@ class Confirm implements HttpGetActionInterface, HttpPostActionInterface, CsrfAw
             // No session is available here (see Plugin\Framework\Session\SkipSessionOnConfirmPost): change nothing.
             return $this->redirect($this->confirmUrl($attemptId, $checkoutToken), 303);
         }
+        // The in-progress page's status check: everything that ends the wait (the receipt, a message, the page that
+        // waits for the merchant) is left to the ordinary request the page makes next, so nothing happens twice.
+        $poll = $this->request->getParam(self::POLL_PARAM) === '1';
         if (!Attempt::isValidId($attemptId)) {
-            return $this->toPaymentStep(
+            return $poll ? $this->pollResult(false) : $this->toPaymentStep(
                 (string) __('We could not find this Affirm payment. Please start the payment again.')
             );
         }
@@ -103,9 +113,14 @@ class Confirm implements HttpGetActionInterface, HttpPostActionInterface, CsrfAw
                 ['exception_class' => get_class($exception)]
             );
 
-            return $this->toPaymentStep((string) __('We could not confirm your Affirm payment. Please try again.'));
+            return $poll
+                ? $this->pollResult(false)
+                : $this->toPaymentStep((string) __('We could not confirm your Affirm payment. Please try again.'));
         }
 
+        if ($poll) {
+            return $this->pollResult($outcome->isInProgress());
+        }
         if ($outcome->isPlaced()) {
             try {
                 $this->successSession->armForOutcome($outcome);
@@ -126,12 +141,12 @@ class Confirm implements HttpGetActionInterface, HttpPostActionInterface, CsrfAw
         }
         if ($checkoutToken !== '' && !$outcome->isInProgress()) {
             // Following this attempt no longer needs the token: keep it out of the address bar and history. While
-            // the attempt is in progress the page refreshes with the token, because a placement that hands the
+            // the attempt is in progress the page checks again with the token, because a placement that hands the
             // attempt back (cart locked, Affirm unreachable) needs it again.
             return $this->redirect($this->confirmUrl($attemptId, ''));
         }
 
-        return $this->statusPage($outcome);
+        return $this->statusPage($outcome, $this->confirmUrl($attemptId, $checkoutToken));
     }
 
     /**
@@ -156,12 +171,13 @@ class Confirm implements HttpGetActionInterface, HttpPostActionInterface, CsrfAw
     }
 
     /**
-     * In-progress page (refreshes itself) or "being confirmed" page (no refresh: it needs the merchant).
+     * In-progress page (checks again in the background) or "being confirmed" page (no check: it needs the merchant).
      *
      * @param ConfirmationOutcome $outcome
+     * @param string $retryUrl this request's URL, for the page's "Check now" link
      * @return Page
      */
-    private function statusPage(ConfirmationOutcome $outcome): Page
+    private function statusPage(ConfirmationOutcome $outcome, #[\SensitiveParameter] string $retryUrl): Page
     {
         $page = $this->pageFactory->create();
         $page->getConfig()->getTitle()->set((string) __('Confirming your payment'));
@@ -172,12 +188,24 @@ class Confirm implements HttpGetActionInterface, HttpPostActionInterface, CsrfAw
             $block->setData('status', $outcome->status);
             $block->setData('message', $outcome->message);
             $block->setData('order_reference', (string) $outcome->incrementId);
+            $block->setData('retry_url', $retryUrl);
         }
         if (!$outcome->isInProgress()) {
             $layout->unsetElement(self::REFRESH_BLOCK);
         }
 
         return $this->noStore($page);
+    }
+
+    /**
+     * Answer to the in-progress page's status check: whether to keep waiting.
+     *
+     * @param bool $inProgress
+     * @return Json
+     */
+    private function pollResult(bool $inProgress): Json
+    {
+        return $this->noStore($this->jsonFactory->create()->setData(['in_progress' => $inProgress]));
     }
 
     /**

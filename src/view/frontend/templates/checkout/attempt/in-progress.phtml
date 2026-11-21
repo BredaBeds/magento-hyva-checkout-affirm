@@ -3,8 +3,12 @@
  * Copyright (c) 2026 Breda Beds. Licensed under the MIT licence; see LICENSE.
  *
  * Shown by hyva_affirm/checkout/confirm while another request places the order of the attempt (the page then
- * refreshes itself through the meta refresh in hyva_affirm_checkout_confirm.xml), or while the attempt waits
- * for the merchant to reconcile it. Data set by the controller: status, message, order_reference.
+ * asks again in the background: checkout/attempt/status-check.phtml), or while the attempt waits for the merchant
+ * to reconcile it. Data set by the controller: status, message, order_reference, retry_url.
+ *
+ * The note under the message (data-affirm-attempt-note) is written for a browser without script;
+ * status-check.phtml replaces its text when it starts, and again after about half a minute. Both changes are
+ * announced: the box is a status region.
  *
  * @var \Magento\Framework\View\Element\Template $block
  * @var \Magento\Framework\Escaper $escaper
@@ -14,14 +18,15 @@
 $inProgress = $block->getData('status') !== 'uncertain';
 $message = (string) $block->getData('message');
 $orderReference = (string) $block->getData('order_reference');
+$retryUrl = (string) $block->getData('retry_url');
 ?>
 <div class="hyva-affirm-attempt-status my-8 max-w-prose" role="status" aria-live="polite">
     <?php if ($message !== ''): ?>
         <p class="text-lg"><?= $escaper->escapeHtml($message) ?></p>
     <?php endif; ?>
     <?php if ($inProgress): ?>
-        <p class="mt-4">
-            <?= $escaper->escapeHtml(__('This page refreshes automatically. Please do not close it.')) ?>
+        <p class="mt-4" data-affirm-attempt-note>
+            <?= $escaper->escapeHtml(__('Use the link below to see whether your order has been placed.')) ?>
         </p>
     <?php elseif ($orderReference !== ''): ?>
         <p class="mt-4">
@@ -29,6 +34,12 @@ $orderReference = (string) $block->getData('order_reference');
         </p>
     <?php endif; ?>
 </div>
+<?php if ($inProgress && $retryUrl !== ''): ?>
+    <p class="my-4">
+        <a href="<?= $escaper->escapeUrl($retryUrl) ?>"
+           class="underline"><?= $escaper->escapeHtml(__('Check the status now')) ?></a>
+    </p>
+<?php endif; ?>
 <script>
     // A page restored from the back-forward cache shows a stale state: ask the server again.
     window.addEventListener('pageshow', (event) => {

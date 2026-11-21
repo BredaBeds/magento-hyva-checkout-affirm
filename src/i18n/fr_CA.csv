@@ -14,6 +14,7 @@ Affirm payment needs review (order #%1),Paiement Affirm à vérifier (commande n
 An Affirm window will open to complete your purchase.,Une fenêtre Affirm s'ouvrira pour finaliser votre achat.
 Attempt,Tentative
 Authorizing,Autorisation en cours
+Check the status now,Vérifier l'état maintenant
 Confirmed by Affirm,Confirmée par Affirm
 Confirming your payment,Confirmation de votre paiement
 Created,Créée
@@ -43,12 +44,14 @@ This Affirm payment has expired. Please start the payment again.,Ce paiement Aff
 This Affirm payment is already complete. Please check your e-mail for the order.,Ce paiement Affirm est déjà terminé. Veuillez consulter vos courriels pour la commande.
 This Affirm payment was cancelled. Please start the payment again.,Ce paiement Affirm a été annulé. Veuillez recommencer le paiement.
 This Affirm payment was replaced by a newer one. Please start the payment again.,Ce paiement Affirm a été remplacé par un plus récent. Veuillez recommencer le paiement.
-This page refreshes automatically. Please do not close it.,Cette page s'actualise automatiquement. Veuillez ne pas la fermer.
+This is taking longer than usual. We are still checking. Please keep this page open.,Cela prend plus de temps que d'habitude. Nous vérifions toujours. Veuillez garder cette page ouverte.
 "To resolve it, look up the payment in the Affirm merchant dashboard by the reserved order number or the Affirm transaction ID. If an order exists, resolve the attempt as placed with that order number; otherwise void the authorization at Affirm and resolve the attempt as voided:","Pour la résoudre, recherchez le paiement dans le tableau de bord marchand Affirm à l'aide du numéro de commande réservé ou de l'ID de transaction Affirm. Si une commande existe, résolvez la tentative comme passée avec ce numéro de commande; sinon, annulez l'autorisation chez Affirm et résolvez la tentative comme annulée :"
 Too many Affirm payment attempts for this cart. Please try again later or use another payment method.,Trop de tentatives de paiement Affirm pour ce panier. Veuillez réessayer plus tard ou utiliser un autre mode de paiement.
 Uncertain (needs review),Incertaine (à vérifier)
 Updated,Mise à jour
+Use the link below to see whether your order has been placed.,Utilisez le lien ci-dessous pour voir si votre commande a été passée.
 "We are confirming your Affirm payment for order #%1. Please do not pay again; if you do not receive an order confirmation, contact us with this order number.","Nous confirmons votre paiement Affirm pour la commande n° %1. Veuillez ne pas payer de nouveau; si vous ne recevez pas de confirmation de commande, contactez-nous en indiquant ce numéro de commande."
+We check every few seconds and take you to your order as soon as it is placed. Please keep this page open.,Nous vérifions toutes les quelques secondes et vous dirigerons vers votre commande dès qu'elle sera passée. Veuillez garder cette page ouverte.
 We could not confirm your Affirm payment. Please try again.,Nous n'avons pas pu confirmer votre paiement Affirm. Veuillez réessayer.
 "We could not confirm your Affirm payment. Please wait a moment, then try again.","Nous n'avons pas pu confirmer votre paiement Affirm. Veuillez patienter un instant, puis réessayer."
 We could not find this Affirm payment. Please start the payment again.,Nous n'avons pas trouvé ce paiement Affirm. Veuillez recommencer le paiement.
