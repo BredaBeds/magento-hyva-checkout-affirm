@@ -26,6 +26,8 @@ class RedactCheckoutTokenProcessor
 
     private const QUERY_PATTERN = '#([?&](?:checkout_token|checkout_id)=)[^&\s"\'<>]+#i';
 
+    private const JSON_PATTERN = '#("(?:checkout_token|checkout_id)"\s*:\s*")[^"]*#i';
+
     private const SENSITIVE_KEYS = ['checkout_token', 'checkout_id'];
 
     private const MAX_DEPTH = 16;
@@ -33,8 +35,8 @@ class RedactCheckoutTokenProcessor
     /**
      * Redact a Monolog 2 array record or a Monolog 3 LogRecord, returning the same type.
      *
-     * @param array<string, mixed>|LogRecord $record
-     * @return array<string, mixed>|LogRecord
+     * @param array<string,mixed>|LogRecord $record
+     * @return array<string,mixed>|LogRecord
      */
     public function __invoke(array|LogRecord $record): array|LogRecord
     {
@@ -81,7 +83,7 @@ class RedactCheckoutTokenProcessor
     }
 
     /**
-     * Redact tokens in URIs and query strings.
+     * Redact tokens in URIs, query strings and JSON text.
      *
      * @param string $value
      * @return string
@@ -95,6 +97,7 @@ class RedactCheckoutTokenProcessor
         }
         if (stripos($value, 'checkout_') !== false) {
             $value = preg_replace(self::QUERY_PATTERN, '$1' . self::REDACTED, $value) ?? self::REDACTED;
+            $value = preg_replace(self::JSON_PATTERN, '$1' . self::REDACTED, $value) ?? self::REDACTED;
         }
 
         return $value;

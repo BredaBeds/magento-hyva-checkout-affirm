@@ -152,6 +152,7 @@ class ConfirmationViewTest extends TestCase
         $this->assertStringContainsString("document.querySelector('[data-affirm-attempt-note]')", $html);
         $this->assertStringContainsString("const checking = 'We\\u0020check\\u0020every", $html);
         $this->assertStringContainsString("const slow = 'This\\u0020is\\u0020taking\\u0020longer", $html);
+        $this->assertStringContainsString('(done < SLOW_AFTER ? 3000 : 10000)', $html);
     }
 
     public function testWaitingForReviewPageShowsTheOrderReferenceAndDoesNotPromiseARefresh(): void

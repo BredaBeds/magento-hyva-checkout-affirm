@@ -73,7 +73,7 @@ class AccountingException extends LocalizedException
     /**
      * Non-personal details for the log line.
      *
-     * @return array<string, scalar|list<scalar>>
+     * @return array<string,scalar|list<scalar>>
      */
     public function getDiagnostics(): array
     {
@@ -83,7 +83,7 @@ class AccountingException extends LocalizedException
     /**
      * Context for the single log line written when a cart is declined.
      *
-     * @return array<string, scalar|list<scalar>>
+     * @return array<string,scalar|list<scalar>>
      */
     public function getLogContext(): array
     {

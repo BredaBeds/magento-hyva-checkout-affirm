@@ -84,6 +84,22 @@ class RedactCheckoutTokenProcessorTest extends TestCase
         $this->assertStringNotContainsString(self::MARKER, var_export($result, true));
     }
 
+    public function testTokensInsideJsonTextAreRedacted(): void
+    {
+        $record = [
+            'message' => 'Response {"checkout_token": "' . self::MARKER . '", "Checkout_Id":"' . self::MARKER . '"}',
+            'context' => ['body' => '{"checkout_id":"' . self::MARKER . '","total":100}'],
+        ];
+
+        $result = ($this->processor)($record);
+
+        $this->assertSame(
+            'Response {"checkout_token": "[redacted]", "Checkout_Id":"[redacted]"}',
+            $result['message']
+        );
+        $this->assertSame(['body' => '{"checkout_id":"[redacted]","total":100}'], $result['context']);
+    }
+
     public function testArrayRecordWithoutContextIsLeftAlone(): void
     {
         $record = ['message' => 'Nothing to see', 'level' => 200];

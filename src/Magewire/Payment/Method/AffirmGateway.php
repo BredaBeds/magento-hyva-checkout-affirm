@@ -6,40 +6,40 @@ declare(strict_types=1);
 
 namespace Hyva\CheckoutAffirm\Magewire\Payment\Method;
 
-use DateTimeImmutable;
 use Hyva\Checkout\Model\Magewire\Component\EvaluationInterface;
 use Hyva\Checkout\Model\Magewire\Component\EvaluationResultFactory;
 use Hyva\Checkout\Model\Magewire\Component\EvaluationResultInterface;
-use Hyva\CheckoutAffirm\Model\Attempt\Attempt;
-use Hyva\CheckoutAffirm\Model\Attempt\AttemptRepositoryInterface;
-use Hyva\CheckoutAffirm\Model\Attempt\OwnerKeyInterface;
-use Hyva\CheckoutAffirm\Model\Attempt\SnapshotInterface;
-use Hyva\CheckoutAffirm\Model\Attempt\State;
 use Hyva\CheckoutAffirm\Model\Checkout\CheckoutObjectBuilderInterface;
-use Hyva\CheckoutAffirm\Model\Checkout\ContactBuilder;
+use Hyva\CheckoutAffirm\Model\Checkout\Preparation;
 use Hyva\CheckoutAffirm\ViewModel\Method;
 use Magento\Checkout\Model\Session as CheckoutSession;
 use Magento\Framework\Exception\LocalizedException;
-use Magento\Payment\Model\Checks\SpecificationFactory;
-use Magento\Payment\Model\MethodInterface;
 use Magento\Quote\Model\Quote;
-use Magento\Quote\Model\ResourceModel\Quote as QuoteResource;
 use Magewirephp\Magewire\Component;
+use Magewirephp\Magewire\Features\SupportMagewireBackwardsCompatibility\HandleBackwardsCompatibility;
 use Psr\Log\LoggerInterface;
-use RuntimeException;
-use UnexpectedValueException;
 
 /**
- * Magewire component of the Affirm payment method in Hyvä Checkout (Magewire 1 and 3).
+ * Magewire component of the Affirm payment method body in Hyvä Checkout (Magewire 1 and 3).
  *
- * Magewire lets the browser call every public method, so the surface is kept to: prepareCheckout() and
- * prepareInline() (actions), refreshInline() (listener target; only rebuilds the inline widget's object) and
- * evaluateCompletion() (Hyvä's evaluation hook). Public properties are visible to and writable by the browser:
- * they carry results to the page and are never read back as input.
+ * It carries the inline ("edu") widget and Hyvä's evaluation. Place Order does not use it: the method body is
+ * rendered only on the step with the payment method list, and Place Order may sit on a later step, so the
+ * checkout is prepared by Controller\Checkout\Prepare.
+ *
+ * Magewire lets the browser call every public method, so the surface is kept to: prepareInline() (action),
+ * refreshInline() (listener target; only rebuilds the inline widget's object) and evaluateCompletion() (Hyvä's
+ * evaluation hook). Public properties are visible to and writable by the browser: they carry results to the page
+ * and are never read back as input.
+ *
+ * Magewire 3 (Hyvä Checkout 3) runs it as a native component, with or without Hyvä's Magewire 1 compatibility module
+ * (Hyva_CheckoutV1bc): `$listeners` is read by Magewire 3 itself, lifecycle hooks such as mount() cannot be called
+ * from the browser, and `$uncallables` (Magewire 1 only) is not needed there because evaluateCompletion() needs an
+ * argument the browser cannot send. Magewire 1 (Hyvä Checkout 1.3) does not know the attribute and ignores it.
  */
+#[HandleBackwardsCompatibility(enabled: false)]
 class AffirmGateway extends Component implements EvaluationInterface
 {
-    public const METHOD_CODE = 'affirm_gateway';
+    public const METHOD_CODE = Preparation::METHOD_CODE;
 
     /**
      * Magewire component id: the method block's layout name.
@@ -47,41 +47,9 @@ class AffirmGateway extends Component implements EvaluationInterface
     public const COMPONENT_ID = 'checkout.payment.method.affirm_gateway';
 
     /**
-     * The checks Magento applies when it lists payment methods and when it places the order.
-     */
-    private const AVAILABILITY_CHECKS = [
-        MethodInterface::CHECK_USE_CHECKOUT,
-        MethodInterface::CHECK_USE_FOR_COUNTRY,
-        MethodInterface::CHECK_USE_FOR_CURRENCY,
-        MethodInterface::CHECK_ORDER_TOTAL_MIN_MAX,
-        MethodInterface::CHECK_ZERO_TOTAL,
-    ];
-
-    /**
-     * Affirm checkout object for the prepared attempt (set by prepareCheckout()).
-     *
-     * @var array<string, mixed>|null
-     */
-    public ?array $checkout = null;
-
-    /**
-     * Attempt the checkout object's return URLs point to (set by prepareCheckout()).
-     *
-     * @var string|null
-     */
-    public ?string $attemptId = null;
-
-    /**
-     * Shopper-safe reason prepareCheckout() did not prepare a checkout.
-     *
-     * @var string|null
-     */
-    public ?string $errorMessage = null;
-
-    /**
      * Checkout object of the inline ("edu") widget; null hides the widget.
      *
-     * @var array<string, mixed>|null
+     * @var array<string,mixed>|null
      */
     public ?array $inlineCheckout = null;
 
@@ -91,13 +59,6 @@ class AffirmGateway extends Component implements EvaluationInterface
      * @var int
      */
     public int $inlineVersion = 0;
-
-    /**
-     * Checkout flow: "modal" or "redirect".
-     *
-     * @var string
-     */
-    public string $mode = Method::MODE_MODAL;
 
     /**
      * Whether the inline widget is enabled.
@@ -116,7 +77,7 @@ class AffirmGateway extends Component implements EvaluationInterface
     /**
      * Cart changes that move the inline widget's amounts (untyped like the parent property).
      *
-     * @var array<string, string>
+     * @var array<string,string>
      */
     protected $listeners = [
         'shipping_method_selected' => 'refreshInline',
@@ -139,72 +100,27 @@ class AffirmGateway extends Component implements EvaluationInterface
     /**
      * @param CheckoutSession $checkoutSession
      * @param CheckoutObjectBuilderInterface $checkoutObjectBuilder
-     * @param ContactBuilder $contactBuilder
-     * @param AttemptRepositoryInterface $attemptRepository
-     * @param OwnerKeyInterface $ownerKey
-     * @param SnapshotInterface $snapshot
-     * @param QuoteResource $quoteResource
-     * @param SpecificationFactory $specificationFactory
+     * @param Preparation $preparation
      * @param Method $method
      * @param LoggerInterface $logger
-     * @param int $attemptLimit new attempts allowed per cart within $attemptWindowSeconds
-     * @param int $attemptWindowSeconds
      */
     public function __construct(
         private readonly CheckoutSession $checkoutSession,
         private readonly CheckoutObjectBuilderInterface $checkoutObjectBuilder,
-        private readonly ContactBuilder $contactBuilder,
-        private readonly AttemptRepositoryInterface $attemptRepository,
-        private readonly OwnerKeyInterface $ownerKey,
-        private readonly SnapshotInterface $snapshot,
-        private readonly QuoteResource $quoteResource,
-        private readonly SpecificationFactory $specificationFactory,
+        private readonly Preparation $preparation,
         private readonly Method $method,
-        private readonly LoggerInterface $logger,
-        private readonly int $attemptLimit = 10,
-        private readonly int $attemptWindowSeconds = 3600
+        private readonly LoggerInterface $logger
     ) {
     }
 
     /**
-     * First render: the configured flow and widget setting.
+     * First render: the widget setting.
      *
      * @return void
      */
     public function mount(): void
     {
-        $this->mode = $this->method->getMode();
         $this->edu = $this->method->isEduEnabled();
-    }
-
-    /**
-     * Action: prepare an Affirm checkout for the current cart.
-     *
-     * Re-checks availability and the checkout data, reserves the order number, reuses or creates the checkout
-     * attempt and builds the checkout object. Sets checkout and attemptId, or errorMessage; never throws.
-     *
-     * @return void
-     */
-    public function prepareCheckout(): void
-    {
-        $this->checkout = null;
-        $this->attemptId = null;
-        $this->errorMessage = null;
-
-        try {
-            $this->mode = $this->method->getMode();
-            $quote = $this->checkoutSession->getQuote();
-            [$checkout, $attempt] = $this->prepare($quote, $this->mode);
-            $this->checkout = $checkout;
-            $this->attemptId = $attempt->attemptId;
-        } catch (LocalizedException $e) {
-            $this->errorMessage = $e->getMessage();
-        } catch (\Throwable $e) {
-            $this->logFailure('Hyva_CheckoutAffirm: the Affirm checkout could not be prepared.', $e);
-            $this->errorMessage = (string) __(
-                'Affirm is not available right now. Please try again or choose another payment method.'
-            );
-        }
     }
 
     /**
@@ -258,7 +174,7 @@ class AffirmGateway extends Component implements EvaluationInterface
     /**
      * Hyvä evaluation, run on every render: blocks Place Order while Affirm is selected but not available.
      *
-     * Based on availability only, never on a previous errorMessage (a stale error would block the retry).
+     * Based on availability only, so a failed Place Order never blocks the retry.
      *
      * @param EvaluationResultFactory $resultFactory
      * @return EvaluationResultInterface
@@ -267,7 +183,8 @@ class AffirmGateway extends Component implements EvaluationInterface
     {
         try {
             $quote = $this->checkoutSession->getQuote();
-            $available = !$this->isSelected($quote) || ($this->available ?? $this->computeAvailability($quote));
+            $available = !$this->preparation->isSelected($quote)
+                || ($this->available ?? $this->computeAvailability($quote));
         } catch (\Throwable $e) {
             $this->logFailure('Hyva_CheckoutAffirm: Affirm availability could not be evaluated.', $e);
             $available = false;
@@ -283,138 +200,6 @@ class AffirmGateway extends Component implements EvaluationInterface
     }
 
     /**
-     * The checkout object and its attempt.
-     *
-     * @param Quote $quote
-     * @param string $mode
-     * @return array{0: array<string, mixed>, 1: Attempt}
-     * @throws LocalizedException with a shopper-safe message
-     */
-    private function prepare(Quote $quote, string $mode): array
-    {
-        if (!$quote->getId() || !$quote->hasItems()) {
-            throw new LocalizedException(__('Your cart is empty or has expired. Please reload the page.'));
-        }
-        if (!$this->isSelected($quote)) {
-            throw new LocalizedException(__('Your payment method changed. Please select Affirm again.'));
-        }
-
-        $this->collectTotals($quote);
-        if (!$this->computeAvailability($quote)) {
-            throw new LocalizedException(
-                __('Affirm is not available for this cart. Please choose another payment method.')
-            );
-        }
-        // Email, addresses and the shipping method of physical carts, before anything is written.
-        $this->contactBuilder->build($quote);
-
-        $quoteId = (int) $quote->getId();
-        if ($this->attemptRepository->hasUnresolvedForQuote($quoteId)) {
-            throw new LocalizedException(__(
-                'Your previous Affirm payment for this cart is still being confirmed. Please reload the page shortly.'
-            ));
-        }
-
-        $this->reserveOrderId($quote);
-        $ownerKeyHash = $this->ownerKey->getHash();
-        $snapshotHash = $this->snapshot->hash($quote);
-
-        $attempt = $this->reusableAttempt($quote, $ownerKeyHash, $snapshotHash)
-            ?? $this->createAttempt($quote, $ownerKeyHash, $snapshotHash);
-
-        $checkout = $this->checkoutObjectBuilder->build($quote, $mode, $attempt->attemptId);
-        if ($this->total($checkout) !== $attempt->grandTotalCents
-            || $this->currency($checkout) !== $attempt->currency
-        ) {
-            // Unreachable for an unchanged cart (the snapshot covers the totals); never send amounts the attempt
-            // would not verify.
-            $this->attemptRepository->transition(
-                $attempt->attemptId,
-                State::open(),
-                State::FAILED,
-                ['failure_reason' => Attempt::REASON_CART_CHANGED]
-            );
-            $this->logger->warning('Hyva_CheckoutAffirm: checkout object and attempt totals differ.', [
-                'quote_id' => $quoteId,
-            ]);
-
-            throw new LocalizedException(
-                __('Your cart changed while Affirm was being prepared. Please place the order again.')
-            );
-        }
-
-        return [$checkout, $attempt];
-    }
-
-    /**
-     * The latest initiated attempt of this cart, owner and cart content, when it can be sent to Affirm again.
-     *
-     * @param Quote $quote
-     * @param string $ownerKeyHash
-     * @param string $snapshotHash
-     * @return Attempt|null
-     */
-    private function reusableAttempt(Quote $quote, string $ownerKeyHash, string $snapshotHash): ?Attempt
-    {
-        $attempt = $this->attemptRepository->findReusable((int) $quote->getId(), $ownerKeyHash, $snapshotHash);
-        if ($attempt === null
-            || $attempt->reservedIncrementId !== $this->reservedOrderId($quote)
-            || $attempt->storeId !== (int) $quote->getStoreId()
-            || $attempt->paymentMethod !== self::METHOD_CODE
-        ) {
-            return null;
-        }
-
-        return $attempt;
-    }
-
-    /**
-     * A new attempt, after the throttle and with the totals of a checkout object built for the cart.
-     *
-     * The preview build declines carts Affirm cannot take before a row is written; the previous open attempt of
-     * the cart is superseded so only the latest preparation can be confirmed.
-     *
-     * @param Quote $quote
-     * @param string $ownerKeyHash
-     * @param string $snapshotHash
-     * @return Attempt
-     * @throws LocalizedException
-     */
-    private function createAttempt(Quote $quote, string $ownerKeyHash, string $snapshotHash): Attempt
-    {
-        $quoteId = (int) $quote->getId();
-        $since = new DateTimeImmutable('@' . (time() - $this->attemptWindowSeconds));
-        if ($this->attemptRepository->countRecentForQuote($quoteId, $since) >= $this->attemptLimit) {
-            $this->logger->warning('Hyva_CheckoutAffirm: Affirm checkout attempts throttled.', [
-                'quote_id' => $quoteId,
-                'limit' => $this->attemptLimit,
-            ]);
-
-            throw new LocalizedException(__(
-                'Too many Affirm payment attempts for this cart. Please try again later or use another payment method.'
-            ));
-        }
-
-        $preview = $this->checkoutObjectBuilder->build($quote, CheckoutObjectBuilderInterface::MODE_INLINE, '');
-
-        $customerId = $quote->getData('customer_id');
-        $attempt = $this->attemptRepository->create(
-            $quoteId,
-            (int) $quote->getStoreId(),
-            is_numeric($customerId) && (int) $customerId > 0 ? (int) $customerId : null,
-            $this->reservedOrderId($quote),
-            $this->currency($preview),
-            $this->total($preview),
-            $snapshotHash,
-            $ownerKeyHash,
-            self::METHOD_CODE
-        );
-        $this->attemptRepository->supersedeOthersForQuote($quoteId, $attempt->attemptId);
-
-        return $attempt;
-    }
-
-    /**
      * Rebuild the inline widget's object (null when Affirm cannot be offered) and bump its version.
      *
      * @param Quote $quote
@@ -425,9 +210,11 @@ class AffirmGateway extends Component implements EvaluationInterface
     {
         $inline = null;
         try {
-            $this->collectTotals($quote);
+            $this->preparation->collectTotals($quote);
             if ($this->computeAvailability($quote)) {
-                $orderId = $reserve ? $this->reserveOrderId($quote) : $this->reservedOrderId($quote);
+                $orderId = $reserve
+                    ? $this->preparation->reserveOrderId($quote)
+                    : $this->preparation->reservedOrderId($quote);
                 if ($orderId === '') {
                     return;
                 }
@@ -478,7 +265,7 @@ class AffirmGateway extends Component implements EvaluationInterface
         try {
             $quote = $this->checkoutSession->getQuote();
 
-            return $quote->getId() && $this->isSelected($quote) ? $quote : null;
+            return $quote->getId() && $this->preparation->isSelected($quote) ? $quote : null;
         } catch (\Throwable $e) {
             $this->logFailure('Hyva_CheckoutAffirm: the checkout quote could not be loaded.', $e);
 
@@ -487,21 +274,7 @@ class AffirmGateway extends Component implements EvaluationInterface
     }
 
     /**
-     * Whether Affirm is the quote's payment method.
-     *
-     * @param Quote $quote
-     * @return bool
-     */
-    private function isSelected(Quote $quote): bool
-    {
-        return $quote->getPayment()->getMethod() === self::METHOD_CODE;
-    }
-
-    /**
-     * Magento's availability of Affirm for the quote.
-     *
-     * The method's isAvailable() (payment_method_is_active observers included) and the checks Magento applies
-     * when it lists payment methods and places the order.
+     * Magento's availability of Affirm for the quote, remembered for this request.
      *
      * @param Quote $quote
      * @return bool
@@ -509,94 +282,7 @@ class AffirmGateway extends Component implements EvaluationInterface
      */
     private function computeAvailability(Quote $quote): bool
     {
-        $available = false;
-        if ($this->isSelected($quote)) {
-            $method = $quote->getPayment()->getMethodInstance();
-            $available = $method->isAvailable($quote)
-                && $this->specificationFactory->create(self::AVAILABILITY_CHECKS)->isApplicable($method, $quote);
-        }
-
-        return $this->available = $available;
-    }
-
-    /**
-     * Collect the totals in this request (the builder reads collected amounts).
-     *
-     * @param Quote $quote
-     * @return void
-     */
-    private function collectTotals(Quote $quote): void
-    {
-        $quote->setTotalsCollectedFlag(false); // @phpstan-ignore method.notFound
-        $quote->collectTotals();
-    }
-
-    /**
-     * Reserve the order number (kept while unused) and save the quote when it changed.
-     *
-     * @param Quote $quote
-     * @return string the reserved order number
-     * @throws RuntimeException when no number could be reserved
-     */
-    private function reserveOrderId(Quote $quote): string
-    {
-        $before = $this->reservedOrderId($quote);
-        $quote->reserveOrderId();
-        $reserved = $this->reservedOrderId($quote);
-        if ($reserved === '') {
-            throw new RuntimeException('No order number could be reserved for the cart.');
-        }
-        if ($reserved !== $before) {
-            $this->quoteResource->save($quote);
-        }
-
-        return $reserved;
-    }
-
-    /**
-     * The quote's reserved order number, or ''.
-     *
-     * @param Quote $quote
-     * @return string
-     */
-    private function reservedOrderId(Quote $quote): string
-    {
-        $reserved = $quote->getReservedOrderId();
-
-        return is_scalar($reserved) ? trim((string) $reserved) : '';
-    }
-
-    /**
-     * Total of a checkout object, in cents.
-     *
-     * @param mixed[] $checkout
-     * @return int
-     * @throws UnexpectedValueException
-     */
-    private function total(array $checkout): int
-    {
-        if (!is_int($checkout['total'] ?? null)) {
-            throw new UnexpectedValueException('The checkout object has no total.');
-        }
-
-        return $checkout['total'];
-    }
-
-    /**
-     * Currency of a checkout object.
-     *
-     * @param mixed[] $checkout
-     * @return string
-     * @throws UnexpectedValueException
-     */
-    private function currency(array $checkout): string
-    {
-        $currency = $checkout['currency'] ?? null;
-        if (!is_string($currency) || $currency === '') {
-            throw new UnexpectedValueException('The checkout object has no currency.');
-        }
-
-        return $currency;
+        return $this->available = $this->preparation->isAvailable($quote);
     }
 
     /**

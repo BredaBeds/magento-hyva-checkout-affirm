@@ -88,7 +88,7 @@ class CheckoutObjectBuilder implements CheckoutObjectBuilderInterface
      * @param Quote $quote
      * @param string $mode
      * @param string $attemptId empty in inline mode
-     * @return array<string, mixed>
+     * @return array<string,mixed>
      * @throws AccountingException
      */
     private function assemble(Quote $quote, string $mode, #[\SensitiveParameter] string $attemptId): array
@@ -134,7 +134,7 @@ class CheckoutObjectBuilder implements CheckoutObjectBuilderInterface
      * @param string $currency
      * @param string $mode
      * @param string $attemptId
-     * @return array<string, string>
+     * @return array<string,string>
      * @throws AccountingException
      */
     private function merchant(

@@ -9,6 +9,7 @@ Affirm is not available for this cart.,Affirm is not available for this cart.
 Affirm is not available for this cart. Please choose another payment method.,Affirm is not available for this cart. Please choose another payment method.
 Affirm is not available for this order. Please choose another payment method.,Affirm is not available for this order. Please choose another payment method.
 Affirm is not available right now. Please try again or choose another payment method.,Affirm is not available right now. Please try again or choose another payment method.
+Affirm is still being prepared for this cart. Please try again in a moment.,Affirm is still being prepared for this cart. Please try again in a moment.
 "Affirm may have authorized the payment for order #%1, but the order could not be created. Look up the transaction in the Affirm merchant dashboard, then resolve the checkout attempt with bin/magento hyva:affirm:attempt:list and hyva:affirm:attempt:resolve: void it at Affirm if no order exists. The cart stays blocked for other payments until it is resolved.","Affirm may have authorized the payment for order #%1, but the order could not be created. Look up the transaction in the Affirm merchant dashboard, then resolve the checkout attempt with bin/magento hyva:affirm:attempt:list and hyva:affirm:attempt:resolve: void it at Affirm if no order exists. The cart stays blocked for other payments until it is resolved."
 Affirm payment needs review (order #%1),Affirm payment needs review (order #%1)
 An Affirm window will open to complete your purchase.,An Affirm window will open to complete your purchase.
@@ -23,14 +24,14 @@ Discount,Discount
 Expires,Expires
 Grand Total,Grand Total
 "Listed here: Affirm checkout attempts that are still open (until they expire) or block their cart. An ""Uncertain"" attempt may hold an Affirm authorization without an order; the cart stays blocked for other payment methods until the attempt is resolved.","Listed here: Affirm checkout attempts that are still open (until they expire) or block their cart. An ""Uncertain"" attempt may hold an Affirm authorization without an order; the cart stays blocked for other payment methods until the attempt is resolved."
-Order #,Order #
 Order reference: #%1,Order reference: #%1
 Payment for this cart is still being confirmed. Please wait a moment or contact us.,Payment for this cart is still being confirmed. Please wait a moment or contact us.
 Placing order,Placing order
 "Please complete your contact, address and shipping details before paying with Affirm.","Please complete your contact, address and shipping details before paying with Affirm."
+Please sign in or create an account to place this order.,Please sign in or create an account to place this order.
 Quote ID,Quote ID
-Reason,Reason
 Reserved Order #,Reserved Order #
+Some items in your cart need attention. Please review your cart before paying with Affirm.,Some items in your cart need attention. Please review your cart before paying with Affirm.
 Stale Affirm checkout attempts could not all be escalated. See the log for details.,Stale Affirm checkout attempts could not all be escalated. See the log for details.
 Started,Started
 State,State
@@ -67,6 +68,8 @@ Your Affirm payment was not completed. Please try again or use another payment m
 Your browser blocked the checkout storage. Please allow it and place the order again.,Your browser blocked the checkout storage. Please allow it and place the order again.
 Your cart changed during the Affirm payment. Please start the payment again.,Your cart changed during the Affirm payment. Please start the payment again.
 Your cart changed while Affirm was being prepared. Please place the order again.,Your cart changed while Affirm was being prepared. Please place the order again.
+Your cart is below the minimum order amount. Please add items before paying with Affirm.,Your cart is below the minimum order amount. Please add items before paying with Affirm.
 Your cart is empty or has expired. Please reload the page.,Your cart is empty or has expired. Please reload the page.
 Your payment method changed. Please select Affirm again.,Your payment method changed. Please select Affirm again.
 Your previous Affirm payment for this cart is still being confirmed. Please reload the page shortly.,Your previous Affirm payment for this cart is still being confirmed. Please reload the page shortly.
+Your session has expired. Please reload the page and place the order again.,Your session has expired. Please reload the page and place the order again.

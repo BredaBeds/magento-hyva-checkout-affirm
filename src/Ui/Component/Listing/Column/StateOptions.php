@@ -17,7 +17,7 @@ class StateOptions implements OptionSourceInterface
     /**
      * Options for the state column and its filter.
      *
-     * @return list<array{value: string, label: string}>
+     * @return list<array{value: string,label: string}>
      */
     public function toOptionArray(): array
     {

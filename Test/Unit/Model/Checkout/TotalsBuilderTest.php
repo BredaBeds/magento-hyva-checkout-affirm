@@ -149,6 +149,25 @@ class TotalsBuilderTest extends TestCase
         );
     }
 
+    public function testRuleLabelsThatShareAKeyKeepAnEntryEach(): void
+    {
+        $cart = $this->cart(['discount_amount' => '-15.0000', 'grand_total' => '1305.2500']);
+        $cart['discounts'] = [
+            ['rule_id' => 3, 'label' => '10', 'amount' => 10.0],
+            ['rule_id' => 4, 'label' => 'Discount 10', 'amount' => 5.0],
+        ];
+
+        $totals = $this->builder()->build($this->quote($cart));
+
+        $this->assertSame(
+            [
+                'Discount 10' => ['discount_amount' => 1000, 'discount_display_name' => '10'],
+                'Discount 10 (2)' => ['discount_amount' => 500, 'discount_display_name' => 'Discount 10'],
+            ],
+            $totals['discounts']
+        );
+    }
+
     public function testUnsupportedCollectedSegmentIsDeclined(): void
     {
         $this->collectors[] = 'surcharge';

@@ -49,7 +49,7 @@ class ClientServiceAttemptTracker
      * @param TransferInterface $transferObject
      * @return mixed
      * @throws ClientException when the attempt is no longer being placed (the request is not sent)
-     * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+     * @SuppressWarnings("PHPMD.UnusedFormalParameter")
      */
     public function aroundPlaceRequest(
         ClientService $subject,
@@ -120,6 +120,7 @@ class ClientServiceAttemptTracker
         if (strtoupper((string) $transferObject->getMethod()) !== 'POST') {
             return false;
         }
+        // phpcs:ignore Magento2.Functions.DiscouragedFunction -- parses Affirm's API URI, not user input
         $path = parse_url((string) $transferObject->getUri(), PHP_URL_PATH);
 
         return is_string($path) && str_ends_with(rtrim($path, '/'), self::AUTHORIZE_PATH);

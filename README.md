@@ -19,13 +19,17 @@ other.
 | PHP | 8.1 – 8.5 (Hyvä Checkout 3 needs 8.2+) | 8.5 |
 | Magento Open Source | 2.4.6 – 2.4.9 | 2.4.9 |
 | Affirm extension | `affirm/magento2` ^4.0.11 | 4.0.11, US sandbox, USD |
-| Hyvä Checkout | ^1.3.14 or ^3.0 | 1.3.15 |
-| Magewire | ^1.13.3 or ^3.7.2 | 1.13.3 |
+| Hyvä Checkout | ^1.3.14 or ^3.0 | 3.0.2 (1.3.15 up to 0.2.0) |
+| Magewire | ^1.13.3 or ^3.7.2 | 3.7.2 (1.13.3 up to 0.2.0) |
 | Hyvä theme module | ^1.3.11 | 1.5.x with Tailwind 4 |
 
-Hyvä Checkout 3 is supported from its source (see
-[Magewire 1 and 3](docs/reference.md#magewire-1-and-3-hyvä-checkout-13-and-30)); a browser run on it is still to
-do, as are older Magento and PHP versions and CAD stores.
+On Hyvä Checkout 3.0.2 both flows were run in a browser against Affirm's sandbox (approval to the success page,
+cancel, decline, a blocked affirm.js), as was Place Order on a step after the payment method list (Hyvä's mobile
+checkout) and a store without guest checkout (see
+[Magewire 1 and 3](docs/reference.md#magewire-1-and-3-hyvä-checkout-13-and-30)). The payment component runs as a
+native Magewire 3 component, so `Hyva_CheckoutV1bc` is not needed. Hyvä Checkout 1.3 was last run in a browser with
+0.2.0: the Place Order request introduced in 0.2.3 has not been run on it. Also not yet tested: older Magento and PHP
+versions, CAD stores and Hyvä's Place Order reCAPTCHA.
 
 ## Installation
 

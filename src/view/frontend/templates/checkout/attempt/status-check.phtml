@@ -3,8 +3,9 @@
  * Copyright (c) 2026 Breda Beds. Licensed under the MIT licence; see LICENSE.
  *
  * The in-progress page's status check (hyva_affirm_checkout_confirm.xml; removed by the confirm controller when the
- * attempt waits for the merchant). Every three seconds it asks the page's own URL with ?poll=1, which runs the
- * confirmation pipeline like a page load and answers {"in_progress": true|false}. The answer false loads the page
+ * attempt waits for the merchant). Every three seconds, and every ten once it took longer than usual (each check can
+ * wait on Affirm), it asks the page's own URL with ?poll=1, which runs the confirmation pipeline like a page load and
+ * answers {"in_progress": true|false}. The answer false loads the page
  * anew, once, and that ordinary request shows the receipt, the message or the page that waits for the merchant.
  * Until then the page stays as it is: a check that fails, or is answered with anything but the status (an error
  * page), is simply made again, so the page can never fall into reloading itself.
@@ -12,10 +13,15 @@
  * It replaces a 3 s meta refresh, which reloaded the page under the shopper over and over (WCAG 2.2.1, failure
  * F41): a screen reader started the page again each time.
  *
- * @var \Magento\Framework\View\Element\Template $block
- * @var \Magento\Framework\Escaper $escaper
- * @var \Hyva\Theme\ViewModel\HyvaCsp|null $hyvaCsp
+ * @var Template $block
+ * @var Escaper $escaper
+ * @var HyvaCsp|null $hyvaCsp
  */
+
+use Hyva\Theme\ViewModel\HyvaCsp;
+use Magento\Framework\Escaper;
+use Magento\Framework\View\Element\Template;
+
 ?>
 <script>
     (() => {
@@ -29,6 +35,9 @@
         const slow = '<?= $escaper->escapeJs(__(
             'This is taking longer than usual. We are still checking. Please keep this page open.'
         )) ?>';
+        // Checks every 3 s, then every 10 s from the check that shows the "slow" note on.
+        const SLOW_AFTER = 10;
+        const delay = (done) => (done < SLOW_AFTER ? 3000 : 10000);
         let checks = 0;
         if (note) {
             note.textContent = checking;
@@ -50,12 +59,12 @@
                 return;
             }
             checks += 1;
-            if (note && checks === 10) {
+            if (note && checks === SLOW_AFTER) {
                 note.textContent = slow;
             }
-            window.setTimeout(check, 3000);
+            window.setTimeout(check, delay(checks));
         };
-        window.setTimeout(check, 3000);
+        window.setTimeout(check, delay(checks));
     })();
 </script>
 <?php if (isset($hyvaCsp)) {

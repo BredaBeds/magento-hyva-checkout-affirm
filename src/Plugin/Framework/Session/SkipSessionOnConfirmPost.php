@@ -19,7 +19,7 @@ use Magento\Framework\Session\SessionStartChecker;
  */
 class SkipSessionOnConfirmPost
 {
-    private const CONFIRM_PATH_PATTERN = '#(?:^|/)hyva_affirm/checkout/confirm(?:/|$)#';
+    private const CONFIRM_PATH_PATTERN = '#(?:^|/)hyva_affirm/checkout/confirm(?:/|$)#i';
 
     /**
      * @param HttpRequest $request
@@ -35,7 +35,7 @@ class SkipSessionOnConfirmPost
      * @param SessionStartChecker $subject
      * @param bool $result
      * @return bool
-     * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+     * @SuppressWarnings("PHPMD.UnusedFormalParameter")
      */
     public function afterCheck(SessionStartChecker $subject, bool $result): bool
     {

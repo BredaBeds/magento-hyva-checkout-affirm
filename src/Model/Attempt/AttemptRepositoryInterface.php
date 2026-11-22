@@ -95,8 +95,8 @@ interface AttemptRepositoryInterface
      * @param string $attemptId
      * @param array<State|string> $fromStates
      * @param State|string $toState
-     * @param array<string, mixed> $set
-     * @param array<string, mixed> $conditions
+     * @param array<string,mixed> $set
+     * @param array<string,mixed> $conditions
      * @return bool
      * @throws InvalidArgumentException for unknown states/columns, an empty $fromStates, $toState in $fromStates
      *         or a transition State::canTransitionTo() does not allow

@@ -65,6 +65,7 @@ class HyvaConfigGenerateBefore implements ObserverInterface
         $path = rtrim($path, '/');
         $root = rtrim((string) $this->directoryList->getRoot(), '/');
         // Module paths are registered with symlinks resolved; the root may not be.
+        // phpcs:ignore Magento2.Functions.DiscouragedFunction -- a path comparison, not file access
         $realRoot = realpath($root);
 
         foreach (array_unique([$root, $realRoot === false ? $root : $realRoot]) as $candidate) {

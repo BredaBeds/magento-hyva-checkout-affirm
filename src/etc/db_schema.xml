@@ -37,6 +37,11 @@
             <column name="state"/>
             <column name="updated_at"/>
         </index>
+        <!-- Cleanup and the admin grid select open attempts by expiry. -->
+        <index referenceId="HYVA_AFFIRM_CHECKOUT_ATTEMPT_STATE_EXPIRES_AT" indexType="btree">
+            <column name="state"/>
+            <column name="expires_at"/>
+        </index>
         <index referenceId="HYVA_AFFIRM_CHECKOUT_ATTEMPT_RESERVED_INCREMENT_ID_STORE_ID" indexType="btree">
             <column name="reserved_increment_id"/>
             <column name="store_id"/>

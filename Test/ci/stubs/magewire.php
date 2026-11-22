@@ -8,7 +8,8 @@
  * signatures as of 1.13.3) so CI runs without Hyvä packages. Only the members this module's code and unit tests
  * use are declared, typed as in the original: the component redeclares $listeners (untyped) and $uncallables
  * (array), and PHP rejects a redeclaration whose type differs from the parent's. getRequest() comes from the
- * Conversation concern upstream.
+ * Conversation concern upstream. The component's class attribute HandleBackwardsCompatibility exists in Magewire 3
+ * only; its double follows 3.7.2.
  */
 declare(strict_types=1);
 
@@ -46,6 +47,25 @@ namespace Magewirephp\Magewire {
         public function getRequest(?string $section = null)
         {
             throw new \LogicException('Test double: mock ' . __METHOD__ . '().');
+        }
+    }
+}
+
+namespace Magewirephp\Magewire\Features\SupportMagewireBackwardsCompatibility {
+    use Attribute;
+
+    /**
+     * Magewire 3's opt-out of Hyvä's v1 mode (signature as of magewirephp/magewire 3.7.2; absent from 1.x).
+     */
+    #[Attribute(Attribute::TARGET_CLASS)]
+    class HandleBackwardsCompatibility
+    {
+        /**
+         * @param bool $enabled
+         */
+        public function __construct(
+            public readonly bool $enabled = true
+        ) {
         }
     }
 }

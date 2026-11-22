@@ -20,6 +20,7 @@ class SkipSessionOnConfirmPostTest extends TestCase
         $this->assertFalse($this->check(true, true, $confirm));
         $this->assertFalse($this->check(true, true, '/hyva_affirm/checkout/confirm'));
         $this->assertFalse($this->check(true, true, 'hyva_affirm/checkout/confirm/'));
+        $this->assertFalse($this->check(true, true, '/Hyva_Affirm/Checkout/Confirm/'), 'paths match case-insensitively');
 
         $this->assertTrue($this->check(true, false, $confirm), 'GET carries the session cookie');
         $this->assertTrue($this->check(true, true, '/hyva_affirm/checkout/cancel/attempt/x'));

@@ -388,9 +388,9 @@ class AttemptRepository implements AttemptRepositoryInterface
     /**
      * Validate column names and normalise values for the adapter.
      *
-     * @param array<string, mixed> $values
+     * @param array<string,mixed> $values
      * @param list<string> $allowedColumns
-     * @return array<string, int|float|string|null>
+     * @return array<string,int|float|string|null>
      */
     private function bindValues(array $values, array $allowedColumns): array
     {

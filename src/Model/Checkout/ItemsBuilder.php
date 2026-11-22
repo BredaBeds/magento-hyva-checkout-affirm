@@ -21,7 +21,8 @@ use Psr\Log\LoggerInterface;
  * fixed-price bundle is its parent row, and a dynamic-price bundle (children calculated separately) becomes its
  * priced children with quantity = child quantity x bundle quantity. unit_price is the item price excluding tax
  * and before discounts, rounded half up to cents: (int) round(round(price, 2) * 100). The sum of the rows may
- * differ from the subtotal by at most one cent per row; anything larger declines the cart.
+ * differ from the subtotal by the rounding of those unit prices (see roundingTolerance()); anything larger declines
+ * the cart.
  *
  * Affirm keys checkout items by SKU, so every SKU is sent once (see uniqueSkus()).
  */
@@ -53,7 +54,7 @@ class ItemsBuilder
      * Item rows of the checkout object.
      *
      * @param Quote $quote quote with collected totals
-     * @return list<array<string, int|string>>
+     * @return list<array<string,int|string>>
      * @throws AccountingException
      */
     public function build(Quote $quote): array
@@ -68,7 +69,7 @@ class ItemsBuilder
             throw new AccountingException(AccountingException::REASON_NO_ITEMS);
         }
         $items = $this->uniqueSkus($rows);
-        $this->reconcile($quote, $items, count($rows));
+        $this->reconcile($quote, $items, $rows);
 
         return $items;
     }
@@ -125,7 +126,7 @@ class ItemsBuilder
      * Rows for one visible quote item.
      *
      * @param AbstractItem $item
-     * @return list<array<string, int|string>>
+     * @return list<array<string,int|string>>
      * @throws AccountingException
      */
     private function rows(AbstractItem $item): array
@@ -168,7 +169,7 @@ class ItemsBuilder
      * @param string $sku
      * @param array<int,Product|null> $imageProducts products to take the image from, in order of preference
      * @param Product|null $urlProduct product to link to; the item's own product when null
-     * @return array<string, int|string>
+     * @return array<string,int|string>
      */
     private function row(AbstractItem $item, int $qty, string $sku, array $imageProducts, ?Product $urlProduct): array
     {
@@ -193,22 +194,26 @@ class ItemsBuilder
     }
 
     /**
-     * Compare the rows that are sent with the collected subtotal: at most one cent of rounding per row.
+     * Compare the rows that are sent with the collected subtotal, allowing the rounding of their unit prices.
      *
-     * The tolerance counts the rows before uniqueSkus() merged any: each merged row carries the rounding of every
-     * row it absorbed, so merging never declines a cart that would otherwise be accepted.
+     * The tolerance is taken from the rows before uniqueSkus() merged any: each merged row carries the rounding of
+     * every row it absorbed, so merging never declines a cart that would otherwise be accepted.
      *
      * @param Quote $quote
-     * @param list<array<string,int|string>> $rows the rows that are sent
-     * @param int $roundedRows number of rows whose unit price was rounded
+     * @param list<array<string,int|string>> $items the rows that are sent
+     * @param list<array<string,int|string>> $rows the rows before merging, one per priced quote item
      * @return void
      * @throws AccountingException
      */
-    private function reconcile(Quote $quote, array $rows, int $roundedRows): void
+    private function reconcile(Quote $quote, array $items, array $rows): void
     {
         $sum = 0;
+        foreach ($items as $item) {
+            $sum += (int) $item['unit_price'] * (int) $item['qty'];
+        }
+        $tolerance = 0;
         foreach ($rows as $row) {
-            $sum += (int) $row['unit_price'] * (int) $row['qty'];
+            $tolerance += $this->roundingTolerance((int) $row['qty']);
         }
         $address = $quote->isVirtual() ? $quote->getBillingAddress() : $quote->getShippingAddress();
         $subtotal = $this->priceCurrency->round($this->number($address->getData('subtotal')));
@@ -216,13 +221,29 @@ class ItemsBuilder
         $subtotal = (int) $this->util->formatToCents($subtotal);
 
         $difference = $sum - $subtotal;
-        $diagnostics = ['difference_cents' => $difference, 'rows' => $roundedRows];
-        if (abs($difference) > $roundedRows) {
+        $diagnostics = ['difference_cents' => $difference, 'rows' => count($rows), 'tolerance_cents' => $tolerance];
+        if (abs($difference) > $tolerance) {
             throw new AccountingException(AccountingException::REASON_ITEMS_MISMATCH, null, $diagnostics);
         }
         if ($difference !== 0) {
             $this->logger->info('Affirm checkout items differ from the subtotal by rounding.', $diagnostics);
         }
+    }
+
+    /**
+     * Cents by which one row's unit_price x qty may differ from its row total.
+     *
+     * Rounding the unit price to cents moves each unit by at most half a cent. With tax-inclusive catalog prices
+     * and row- or total-based tax calculation, Magento derives the item price from the row total (price = row
+     * total / qty, rounded), so a row of 10 can be off by several cents; at least one cent per row is allowed for
+     * the rounding of the subtotal itself.
+     *
+     * @param int $qty
+     * @return int
+     */
+    private function roundingTolerance(int $qty): int
+    {
+        return max(1, intdiv($qty + 1, 2));
     }
 
     /**
@@ -258,7 +279,10 @@ class ItemsBuilder
             try {
                 return $this->imageUrlBuilder->getUrl($file, $this->imageId);
             } catch (\Throwable $e) {
-                $this->logger->warning('Affirm checkout item image URL unavailable.', ['exception_class' => get_class($e)]);
+                $this->logger->warning(
+                    'Affirm checkout item image URL unavailable.',
+                    ['exception_class' => get_class($e)]
+                );
 
                 return '';
             }

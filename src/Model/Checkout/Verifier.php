@@ -29,8 +29,6 @@ class Verifier implements VerifierInterface
 
     private const CONFIG_PATH = 'payment/affirm_gateway/';
 
-    private const TOKEN_PATTERN = '/^[A-Za-z0-9_-]{1,128}\z/';
-
     /**
      * Magento's encrypted config value format ("<key version>:<cipher version>:<payload>").
      */
@@ -62,7 +60,7 @@ class Verifier implements VerifierInterface
      */
     public function verify(Attempt $attempt, #[\SensitiveParameter] string $checkoutToken): VerificationResult
     {
-        if (preg_match(self::TOKEN_PATTERN, $checkoutToken) !== 1) {
+        if (!Attempt::isValidToken($checkoutToken)) {
             return $this->fail(VerificationResult::REASON_INVALID_TOKEN);
         }
         $currency = strtoupper($attempt->currency);

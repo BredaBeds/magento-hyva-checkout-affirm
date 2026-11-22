@@ -79,10 +79,15 @@ Sales > Payment Methods > Affirm) are honoured:
 1. The shopper selects Affirm; the method initialises and loads affirm.js through the
    [loader](#the-windowhyvaaffirm-loader-contract-v1). With the inline widget on, `prepareInline()` builds the
    widget's checkout object.
-2. Place Order: after Hyvä's validations, the JavaScript calls the Magewire action `prepareCheckout()` and reads
-   the public properties `checkout`, `attemptId` and `errorMessage`. The server re-checks availability and the
-   checkout data, reserves the order number, creates (or reuses) the checkout attempt and builds the checkout
-   object. A refusal sets `errorMessage`; Affirm is not opened.
+2. Place Order: after Hyvä's validations, the JavaScript posts the form key to `hyva_affirm/checkout/prepare`
+   (`Controller\Checkout\Prepare`, a plain request rather than a Magewire action, so Place Order works on any
+   checkout step, also one after the payment method list such as Hyvä's "mobile" checkout). The server
+   (`Model\Checkout\Preparation`) refuses what Magento would refuse at submit (a guest cart where guest checkout is
+   not allowed, an item error, the minimum order amount), re-checks availability and the checkout data, reserves
+   the order number, creates (or reuses) the checkout attempt under a per-cart lock and builds the checkout object.
+   It answers `{checkout, attemptId, mode}`, or `{error}` with the shopper message; Affirm is then not opened. The
+   request gives up after 30 seconds. The form key is checked by the controller itself: Magento's own check skips it
+   for requests with `X-Requested-With`.
 3. `affirm.checkout(object)` and `affirm.checkout.open({onSuccess, onFail, onValidationError})`.
 4. `onSuccess` stores `checkout_token` and `attempt_id` in Hyvä's session storage group `payment` and awaits
    Hyvä's `fallback()`, which runs the module's place-order service. The service runs the
@@ -110,19 +115,20 @@ callbacks place one order.
 
 | State | Meaning |
 |---|---|
-| `initiated` | Prepared by `prepareCheckout()`; return URLs issued. Expires after 60 minutes |
+| `initiated` | Prepared by the prepare request; return URLs issued. Expires after 60 minutes |
 | `confirmed` | Affirm confirmed the checkout (verified) and the token hash is recorded; not yet claimed |
 | `placing` | Claimed by one request; Magento's placement is running; Affirm's authorization not yet sent |
 | `authorizing` | Affirm's authorize request has been sent for this attempt |
 | `placed` | The order exists; order id and number recorded |
-| `failed` | Definitive failure with a reason (`cancelled`, `declined`, `expired`, `verification_failed`, `cart_changed`, `unavailable`, `superseded`, `placement_failed`); no authorization exists |
+| `failed` | Definitive failure with a reason (`cancelled`, `declined`, `expired`, `verification_failed`, `cart_changed`, `unavailable`, `guest_not_allowed`, `superseded`, `placement_failed`); no authorization exists |
 | `uncertain` | The placement failed after the authorize request was sent and no order exists, or its process died and the [escalation job](#escalation-cron) found no order: Affirm may hold an authorization. Blocks the cart and needs [reconciliation](../README.md#when-a-payment-needs-review) |
 | `resolved` | An uncertain (or stuck) attempt closed by an operator, as `resolved_placed` or `resolved_voided` |
 
 A new preparation reuses the cart's `initiated` attempt when owner, cart snapshot, order number, store and method
 are unchanged and at least 15 minutes of its lifetime are left. Otherwise it creates a new attempt and then marks
-every other open attempt of the cart `failed (superseded)` in one update, so parallel preparations cannot leave two
-open attempts. At most 10 attempts are created per cart per hour.
+every other open attempt of the cart `failed (superseded)` in one update. Reuse, creation and supersession run under
+a lock per cart (Magento's lock manager, 10 seconds), so two simultaneous preparations of one cart cannot fail each
+other's attempt. At most 10 attempts are created per cart per hour.
 
 The quote payment keeps what Affirm's gateway needs (`checkout_token`, `country_code` = `USA` or `CAN` by currency)
 and the attempt id (`hyva_affirm_attempt_id`); Magento copies all three to the order payment.
@@ -201,9 +207,11 @@ validators compare the total only; the order number and currency checks are this
 Affirm's availability is checked three times, and every check dispatches `payment_method_is_active`, so merchant
 observers can refuse Affirm at any point:
 
-1. at preparation (`prepareCheckout()`, plus Hyvä's evaluation on every render), together with Magento's own
-   method checks (checkout, country, currency, minimum/maximum total, zero total);
-2. in the confirmation pipeline, before verification and claim (the return request in redirect mode);
+1. at preparation (the prepare request, plus Hyvä's evaluation on every render of the payment step), together with
+   Magento's own method checks (checkout, country, currency, minimum/maximum total, zero total);
+2. in the confirmation pipeline, before verification and claim (the return request in redirect mode), together
+   with guest checkout (`Model\Checkout\GuestCheckout`): the redirect return places the order outside Hyvä's
+   place-order request, which refuses guest orders the store does not allow only since Hyvä Checkout 3;
 3. by Magento inside `placeOrder()` (`Quote\Payment::importData()`).
 
 While a cart has an attempt in `placing`, `authorizing` or `uncertain`, an observer refuses to submit that cart
@@ -273,8 +281,10 @@ up.
   authorization. `formatToCents()` alone is off by a cent on four-decimal totals (100.0050 gives 10000; the
   validator expects 10001).
 - **Unit prices.** `unit_price` = `(int) round(round(price, 2) * 100)`: the item price excluding tax and before
-  discounts, rounded half up. The sum of `unit_price × qty` may differ from the subtotal by at most one cent per
-  quote row (logged); more declines the cart.
+  discounts, rounded half up. The sum of `unit_price × qty` may differ from the subtotal by the rounding of those
+  unit prices, half a cent per unit and at least one cent per quote row (logged); more declines the cart. The
+  allowance per unit matters for tax-inclusive catalog prices, where Magento derives the item price from the row
+  total (99.95 including 6 % tax, quantity 10: row 942.92, unit price 94.29, sent as 942.90).
 - **Items.** Simple, virtual and downloadable items: their row. Configurable: the parent row with the selected
   child's SKU (and the child's image when it has one). Fixed-price bundle: the parent row. Dynamic-price bundle: the
   priced child rows with quantity = child quantity × bundle quantity; the parent is omitted. Non-integer quantities
@@ -413,25 +423,36 @@ the Magewire 1 compatibility layer (`hyva-themes/magento2-hyva-checkout-v1bc`) t
 
 - **PHP.** The component (`Hyva\CheckoutAffirm\Magewire\Payment\Method\AffirmGateway`, block
   `checkout.payment.method.affirm_gateway`) extends `Magewirephp\Magewire\Component` and implements Hyvä's
-  `EvaluationInterface`. Public properties and methods only; a `$listeners` array (no `#[On]`); no `emit()`,
+  `EvaluationInterface`. It carries only the inline widget and the evaluation; Place Order goes through the prepare
+  request. Public properties and methods only; a `$listeners` array (no `#[On]`); no `emit()`,
   `dispatchBrowserEvent()`, `redirect()`, `wire:model`, forms or custom hydrators.
 - **Browser-callable surface.** Magewire lets the browser call a component's public methods, so apart from the
-  lifecycle hook `mount()` (never callable from the browser) the component has exactly four:
-  `prepareCheckout()` and `prepareInline()` (actions), `refreshInline()` (listener target for
+  lifecycle hook `mount()` (never callable from the browser) the component has exactly three:
+  `prepareInline()` (action), `refreshInline()` (listener target for
   `shipping_method_selected`, `shipping_address_saved`, `shipping_address_activated`, `billing_address_saved`,
   `billing_address_activated`, `coupon_code_applied`, `coupon_code_revoked` and `payment_method_selected`; it only
   rebuilds the inline widget's object and has no other side effects) and `evaluateCompletion()` (Hyvä's evaluation
-  hook; listed in Magewire 1's `$uncallables`). Public properties (`checkout`, `attemptId`, `errorMessage`,
-  `inlineCheckout`, `inlineVersion`, `mode`, `edu`) are results for the page: the browser can write them, so they are
-  never read back as input. The authoritative state is the attempt row.
+  hook; listed in Magewire 1's `$uncallables`). Public properties (`inlineCheckout`, `inlineVersion`, `edu`) are
+  results for the page: the browser can write them, so they are never read back as input.
 - **Templates.** `wire:key` on the single root element, `wire:ignore` around the subtree affirm.js owns, data
   attributes for state.
 - **JavaScript.** No Magewire hooks. `Magewire.find('checkout.payment.method.affirm_gateway')` returns the `$wire`
-  proxy in both versions; the code awaits the action and then reads the properties. Everything else goes through
-  `hyvaCheckout.*` and window events.
+  proxy in both versions; the inline widget calls `prepareInline()` through it and reads its state from data
+  attributes. Everything else goes through `hyvaCheckout.*` (the method registers inside `hyvaCheckout.api.after()`),
+  `fetch()` and window events.
+- **Native on Checkout 3, no v1bc needed.** The component carries `#[HandleBackwardsCompatibility(enabled: false)]`,
+  so Magewire 3 runs it as a native component whether or not Hyvä's Magewire 1 compatibility module
+  (`Hyva_CheckoutV1bc`) is installed, and Hyvä never reports it as Checkout 1.x code. Natively, Magewire 3 reads
+  `$listeners` itself and refuses browser calls to lifecycle hooks such as `mount()`; `evaluateCompletion()` is
+  browser-callable as on Hyvä's own native components, but harmless (it needs a factory argument the browser cannot
+  send, so such a call only fails). Magewire 1 never reads PHP attributes (none in 1.13.3), so on Hyvä Checkout 1.3
+  the attribute is never resolved and `$uncallables` keeps `evaluateCompletion()` off the browser surface there.
+  Verified on Checkout 3.0.2 with the inline widget on: the widget's object is built on selection and rebuilt after a
+  shipping-method and a billing change, and the redirect flow places the order.
 - **Checkout 3 differences handled in the payment JavaScript.** A Magewire 3 action call never settles when its
-  request fails, so the script calls actions through Checkout 3's `hyvaCheckout.misc.call()`, which rejects instead
-  (Checkout 1.3 has no `misc.call()`; there the action is called directly). Checkout 3 also passes every error of
+  request fails, so the inline widget calls `prepareInline()` through Checkout 3's `hyvaCheckout.misc.call()`, which
+  rejects instead (Checkout 1.3 has no `misc.call()`; there the action is called directly). `misc.call()` is marked
+  `@internal` in Checkout 3: re-check it on every Checkout update. Checkout 3 also passes every error of
   `placeOrder()` to the method's `handleException()`, whose default adds "Something went wrong while placing the
   order". The method's own `handleException()` stays quiet for errors the script has already shown and passes any
   other error to Hyvä's default.
@@ -447,11 +468,12 @@ the Magewire 1 compatibility layer (`hyva-themes/magento2-hyva-checkout-v1bc`) t
   `Magewirephp\Magewire\Mechanisms\HandleComponents\HandleComponents`, needs no such check and the request API is
   not called there.
 
-Throttle arguments of the component: `attemptLimit` (new attempts per cart, default 10) within
-`attemptWindowSeconds` (default 3600):
+Throttle and lock arguments of `Model\Checkout\Preparation`: `attemptLimit` (new attempts per cart, default 10)
+within `attemptWindowSeconds` (default 3600), and `lockTimeoutSeconds` (default 10, how long a preparation waits
+for another one of the same cart):
 
 ```xml
-<type name="Hyva\CheckoutAffirm\Magewire\Payment\Method\AffirmGateway">
+<type name="Hyva\CheckoutAffirm\Model\Checkout\Preparation">
     <arguments>
         <argument name="attemptLimit" xsi:type="number">5</argument>
         <argument name="attemptWindowSeconds" xsi:type="number">1800</argument>
@@ -470,7 +492,8 @@ exists. v1 is frozen; a newer loader replaces an older one, so later versions ke
 window.hyvaAffirm = {
     version: 1,
     load(),        // Promise<affirm>: sets Affirm's _affirm_config, injects affirm.js once, resolves on affirm.ui.ready,
-                   // rejects on a script error or after 10 s; a rejected load may be retried
+                   // rejects on a script error or after 10 s; a rejected load may be retried (no second tag
+                   // while one is still downloading: affirm.js must not run twice)
     refresh(),     // debounced affirm.ui.refresh()
     whenIdle(fn),  // runs fn after DOMContentLoaded and an idle period
 };
@@ -507,7 +530,7 @@ storefront module's README for the full description.
 - **Affirm's event `affirm_place_order_success`** (`order`, `quote`) is dispatched once per placed attempt, as
   Affirm's own confirm controller does.
 - **Lifetimes and limits** (DI arguments): `lifetimeSeconds` (3600) and `reuseMinRemainingSeconds` (900) on
-  `Hyva\CheckoutAffirm\Model\Attempt\AttemptRepository`; `attemptLimit`/`attemptWindowSeconds` on the component;
+  `Hyva\CheckoutAffirm\Model\Attempt\AttemptRepository`; `attemptLimit`/`attemptWindowSeconds`/`lockTimeoutSeconds` on `Hyva\CheckoutAffirm\Model\Checkout\Preparation`;
   the cleanup arguments in [Cleanup cron](#cleanup-cron); `staleAfterSeconds` (900) on
   `Hyva\CheckoutAffirm\Model\Attempt\StaleAttemptPolicy` (when a placing/authorizing attempt counts as abandoned:
   shopper's page, escalation job and `resolve --force`) and `batchSize` (50) on

@@ -36,7 +36,7 @@ class MetadataBuilder
      *
      * @param Quote $quote
      * @param string $mode modal|redirect|inline, already normalised
-     * @return array<string, string>
+     * @return array<string,string>
      */
     public function build(Quote $quote, string $mode): array
     {

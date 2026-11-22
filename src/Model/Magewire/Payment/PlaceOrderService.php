@@ -36,11 +36,6 @@ class PlaceOrderService extends AbstractPlaceOrderService
     public const KEY_ATTEMPT_ID = 'attempt_id';
 
     /**
-     * Shape of an Affirm checkout token; anything else never reaches the pipeline.
-     */
-    private const TOKEN_PATTERN = '/^[A-Za-z0-9_-]{1,128}\z/';
-
-    /**
      * @var int|null order placed (or found placed) by this request
      */
     private ?int $placedOrderId = null;
@@ -152,7 +147,7 @@ class PlaceOrderService extends AbstractPlaceOrderService
         $attemptId = $payment[self::KEY_ATTEMPT_ID] ?? null;
         $checkoutToken = $payment[self::KEY_CHECKOUT_TOKEN] ?? null;
         if (!is_string($attemptId) || !Attempt::isValidId($attemptId)
-            || !is_string($checkoutToken) || preg_match(self::TOKEN_PATTERN, $checkoutToken) !== 1
+            || !is_string($checkoutToken) || !Attempt::isValidToken($checkoutToken)
         ) {
             throw new LocalizedException(
                 __('Your Affirm payment could not be confirmed. Please place the order again.')

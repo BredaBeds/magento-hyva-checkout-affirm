@@ -2,8 +2,8 @@
  * Copyright (c) 2026 Breda Beds. Licensed under the MIT licence; see LICENSE.
  *
  * Runs the script of templates/checkout/payment/affirm-gateway-js.phtml against fakes of Hyvä Checkout's API,
- * Magewire, the window.hyvaAffirm loader, affirm.js, Alpine and the DOM: the Place Order flows (modal and
- * redirect) and the inline widget's coalescing and stale-reply handling.
+ * Magewire, fetch (the prepare controller), the window.hyvaAffirm loader, affirm.js, Alpine and the DOM: the Place
+ * Order flows (modal and redirect) and the inline widget's coalescing and stale-reply handling.
  *
  * Run from the package root: node --test Test/js/*.test.mjs
  */
@@ -23,10 +23,12 @@ const MESSAGES = {
     validation: 'validation',
     storage: 'storage',
 };
+const PREPARE_URL = 'https://shop.test/hyva_affirm/checkout/prepare/';
 const CONFIG = {
     code: 'affirm_gateway',
     componentId: COMPONENT_ID,
     containerId: CONTAINER_ID,
+    prepareUrl: PREPARE_URL,
     storage: {group: 'payment', token: 'checkout_token', attempt: 'attempt_id'},
     messages: MESSAGES,
 };
@@ -75,7 +77,7 @@ const fakeAffirm = ({withOpen = true} = {}) => {
 
 /** Magewire 3 style $wire with a server stand-in for the component's actions. */
 const fakeMagewire = (actions) => {
-    const state = {checkout: null, attemptId: null, errorMessage: null, mode: 'modal', inlineVersion: 0};
+    const state = {inlineVersion: 0};
     const calls = [];
     const $wire = new Proxy({}, {
         get(target, property) {
@@ -97,17 +99,38 @@ const fakeMagewire = (actions) => {
     return {state, calls, Magewire: {find: (id) => (id === COMPONENT_ID ? $wire : undefined)}};
 };
 
-const prepared = (mode) => (state) => {
-    state.checkout = checkoutObject(mode);
-    state.attemptId = ATTEMPT_ID;
-    state.errorMessage = null;
-    state.mode = mode;
+/** Answer of the prepare controller for a prepared checkout. */
+const prepared = (mode) => () => ({checkout: checkoutObject(mode), attemptId: ATTEMPT_ID, mode});
+
+/**
+ * fetch() double for the prepare controller: `respond` returns the JSON body, {status} for an HTTP error, or
+ * null for a request that never answers (until it is aborted); throwing stands for a network failure.
+ */
+const fakeFetch = (respond, requests) => (url, options) => {
+    requests.push({url, options});
+    return new Promise((resolve, reject) => {
+        options.signal.addEventListener('abort', () => reject(new Error('aborted')));
+        const answer = respond();
+        if (answer === null) {
+            return;
+        }
+        const status = answer.status ?? 200;
+        resolve({ok: status === 200, status, json: async () => answer});
+    });
 };
 
 /** Loads the script into a fresh page with fake globals. */
-const page = ({actions = {}, affirm = fakeAffirm(), loadFails = false, storageFails = false} = {}) => {
+const page = ({
+    actions = {},
+    prepare = prepared('modal'),
+    affirm = fakeAffirm(),
+    loadFails = false,
+    storageFails = false,
+    api = null,
+} = {}) => {
     const listeners = {};
     const notices = [];
+    const requests = [];
     const storage = [];
     const observers = [];
     let timers = [];
@@ -121,11 +144,16 @@ const page = ({actions = {}, affirm = fakeAffirm(), loadFails = false, storageFa
             load: () => (loadFails ? Promise.reject(new Error('blocked')) : Promise.resolve(affirm)),
         },
         Alpine: undefined,
+        hyva: {getFormKey: () => 'FORM_KEY'},
+        dispatchMessages: (messages) => pageMessages.push(...messages),
         addEventListener(type, callback, options) {
             (listeners[type] ||= []).push({callback, once: Boolean(options && options.once)});
         },
         removeEventListener(type, callback) {
             listeners[type] = (listeners[type] || []).filter((listener) => listener.callback !== callback);
+        },
+        dispatchEvent(event) {
+            notices.push(['event', event.type, event.detail]);
         },
         dispatch(type, event = {}) {
             for (const listener of [...(listeners[type] || [])]) {
@@ -151,10 +179,16 @@ const page = ({actions = {}, affirm = fakeAffirm(), loadFails = false, storageFa
         isConnected: true,
         contains: (element) => element === container,
     };
+    const pageMessages = [];
     const document = {
         body: {},
         activeElement: button,
+        methodList: true,
         getElementById: (id) => (id === CONTAINER_ID ? container : null),
+        querySelector(selector) {
+            assert.equal(selector, '[wire\\:id="checkout.payment.methods"]');
+            return this.methodList ? {} : null;
+        },
     };
 
     class FakeMutationObserver {
@@ -176,7 +210,9 @@ const page = ({actions = {}, affirm = fakeAffirm(), loadFails = false, storageFa
     }
 
     const hyvaCheckout = {
+        ...(api ? {api} : {}),
         payment: {
+            config: {browserEventSuccess: 'payment:method:success'},
             registerMethod({code, method}) {
                 registered = {code, method};
                 return method;
@@ -202,6 +238,10 @@ const page = ({actions = {}, affirm = fakeAffirm(), loadFails = false, storageFa
         document,
         hyvaCheckout,
         MutationObserver: FakeMutationObserver,
+        fetch: fakeFetch(prepare, requests),
+        AbortController,
+        URLSearchParams,
+        CustomEvent,
         setTimeout: (callback, delay = 0) => {
             const id = timers.length + 1 + now;
             timers.push({id, callback, at: now + delay});
@@ -226,6 +266,8 @@ const page = ({actions = {}, affirm = fakeAffirm(), loadFails = false, storageFa
         affirm,
         magewire,
         notices,
+        pageMessages,
+        requests,
         storage,
         observers,
         button,
@@ -273,6 +315,24 @@ describe('registration', () => {
         assert.equal(typeof p.mount().destroy, 'function');
     });
 
+    it('registers once Hyvä\'s API is ready when hyvaCheckout.api.after() exists', async () => {
+        const queued = [];
+        const p = page({api: {after: (callback) => queued.push(callback)}});
+        assert.throws(() => p.code(), 'nothing registered before the API is ready');
+        queued.forEach((callback) => callback());
+        assert.equal(p.code(), 'affirm_gateway');
+    });
+
+    it('exposes the component constructor so a theme can wrap it', () => {
+        const p = page();
+        const original = p.window.hyvaCheckoutAffirmGateway;
+        assert.equal(typeof original, 'function');
+        p.window.hyvaCheckoutAffirmGateway = () => Object.assign(original(), {themed: true});
+        const data = p.mount();
+        assert.equal(data.themed, true);
+        assert.equal(typeof data.destroy, 'function');
+    });
+
     it('preloads affirm.js when Affirm is selected', async () => {
         let loads = 0;
         const p = page();
@@ -287,11 +347,11 @@ describe('registration', () => {
 
 describe('modal Place Order', () => {
     it('hands the token and attempt to Hyvä and places through fallback()', async () => {
-        const p = page({actions: {prepareCheckout: prepared('modal')}});
+        const p = page({prepare: prepared('modal')});
         let fallbacks = 0;
         const fallback = async () => {
             fallbacks++;
-            assert.equal(p.window.Magewire.find(COMPONENT_ID).get('attemptId'), ATTEMPT_ID);
+            assert.equal(p.hyvaCheckout.storage.data.payment.attempt_id, ATTEMPT_ID);
         };
 
         const placing = p.method().placeOrder({fallback});
@@ -301,17 +361,21 @@ describe('modal Place Order', () => {
         p.affirm.options.onSuccess({checkout_token: 'TOKEN_1'});
         await placing;
 
-        assert.deepEqual(p.magewire.calls, ['prepareCheckout']);
+        assert.deepEqual(p.magewire.calls, [], 'Place Order needs no Magewire component');
+        assert.equal(p.requests.length, 1);
+        assert.equal(p.requests[0].url, PREPARE_URL);
+        assert.equal(p.requests[0].options.method, 'POST');
+        assert.equal(p.requests[0].options.body.get('form_key'), 'FORM_KEY');
         assert.equal(fallbacks, 1);
         assert.deepEqual(p.storage.slice(-2), [
             ['checkout_token', 'TOKEN_1', 'payment'],
             ['attempt_id', ATTEMPT_ID, 'payment'],
         ]);
-        assert.deepEqual(p.notices, [['clear', '']]);
+        same(p.notices, [['event', 'payment:method:success', {}]]);
     });
 
     it('accepts checkout_id when Affirm sends no checkout_token', async () => {
-        const p = page({actions: {prepareCheckout: prepared('modal')}});
+        const p = page({prepare: prepared('modal')});
         const placing = p.method().placeOrder({fallback: async () => {}});
         await settle();
         p.affirm.options.onSuccess({checkout_id: 'ID_2'});
@@ -322,7 +386,7 @@ describe('modal Place Order', () => {
     });
 
     it('rejects with a warning when the shopper closes Affirm, without placing', async () => {
-        const p = page({actions: {prepareCheckout: prepared('modal')}});
+        const p = page({prepare: prepared('modal')});
         let fallbacks = 0;
         const placing = p.method().placeOrder({fallback: async () => {
             fallbacks++;
@@ -341,7 +405,7 @@ describe('modal Place Order', () => {
             [(options) => options.onValidationError({}), MESSAGES.validation],
             [(options) => options.onSuccess({}), MESSAGES.failed],
         ]) {
-            const p = page({actions: {prepareCheckout: prepared('modal')}});
+            const p = page({prepare: prepared('modal')});
             const placing = p.method().placeOrder({fallback: async () => {}});
             await settle();
             trigger(p.affirm.options);
@@ -350,35 +414,73 @@ describe('modal Place Order', () => {
         }
     });
 
+    it('places the order on a step without the payment method list', async () => {
+        const p = page({prepare: prepared('modal')});
+        p.window.Magewire = {find: () => {
+            throw new Error('Component not found');
+        }};
+        const placing = p.method().placeOrder({fallback: async () => {}});
+        await settle();
+        assert.deepEqual(p.affirm.calls.map((call) => call[0]), ['reset', 'checkout', 'open']);
+        p.affirm.options.onSuccess({checkout_token: 'TOKEN_1'});
+        await placing;
+    });
+
     it('shows the server message and never opens Affirm when preparation fails', async () => {
-        const p = page({actions: {prepareCheckout: (state) => {
-            state.errorMessage = 'Affirm is not available for this cart.';
-        }}});
+        const p = page({prepare: () => ({error: 'Affirm is not available for this cart.'})});
         await assert.rejects(p.method().placeOrder({fallback: async () => {}}), /not available for this cart/);
         assert.deepEqual(p.affirm.calls, []);
         assert.deepEqual(p.notices.at(-1), ['error', 'Affirm is not available for this cart.']);
     });
 
-    it('fails when the component is missing or the request fails', async () => {
-        const missing = page();
-        missing.window.Magewire = {find: () => undefined};
-        await assert.rejects(missing.method().placeOrder({fallback: async () => {}}), /unavailable/);
+    it('fails when the request fails, answers an error status or an incomplete object', async () => {
+        for (const respond of [
+            () => {
+                throw new Error('offline');
+            },
+            () => ({status: 400}),
+            () => ({checkout: checkoutObject('modal')}),
+            () => ({attemptId: ATTEMPT_ID}),
+        ]) {
+            const p = page({prepare: respond});
+            await assert.rejects(p.method().placeOrder({fallback: async () => {}}), /unavailable/);
+            assert.deepEqual(p.notices.at(-1), ['error', MESSAGES.unavailable]);
+            assert.deepEqual(p.affirm.calls, []);
+        }
+    });
 
-        const broken = page({actions: {prepareCheckout: () => {
-            throw new Error('HTTP 500');
-        }}});
-        await assert.rejects(broken.method().placeOrder({fallback: async () => {}}), /unavailable/);
-        assert.deepEqual(broken.notices.at(-1), ['error', MESSAGES.unavailable]);
+    it('shows its messages in Hyvä\'s page messages on a step without the payment method list', async () => {
+        const p = page({prepare: () => ({error: 'Please sign in or create an account to place this order.'})});
+        p.document.methodList = false;
+        await assert.rejects(p.method().placeOrder({fallback: async () => {}}), /sign in/);
+        same(p.pageMessages, [{type: 'error', text: 'Please sign in or create an account to place this order.'}]);
+        assert.equal(p.notices.filter((notice) => notice[0] === 'error').length, 0);
+    });
+
+    it('shows the message of a refused form key', async () => {
+        const p = page({prepare: () => ({status: 403, error: 'Your session has expired.'})});
+        await assert.rejects(p.method().placeOrder({fallback: async () => {}}), /session has expired/);
+        assert.deepEqual(p.notices.at(-1), ['error', 'Your session has expired.']);
+        assert.deepEqual(p.affirm.calls, []);
+    });
+
+    it('gives Place Order back when the prepare request stalls', async () => {
+        const p = page({prepare: () => null});
+        const placing = p.method().placeOrder({fallback: async () => {}});
+        await settle();
+        p.advance(30000);
+        await assert.rejects(placing, /unavailable/);
+        assert.deepEqual(p.affirm.calls, []);
     });
 
     it('reports a blocked affirm.js', async () => {
-        const p = page({actions: {prepareCheckout: prepared('modal')}, loadFails: true});
+        const p = page({prepare: prepared('modal'), loadFails: true});
         await assert.rejects(p.method().placeOrder({fallback: async () => {}}), /sdk/);
         assert.deepEqual(p.notices.at(-1), ['error', MESSAGES.sdk]);
     });
 
     it('clears the stored token when the server refuses the order and adds no second message', async () => {
-        const p = page({actions: {prepareCheckout: prepared('modal')}});
+        const p = page({prepare: prepared('modal')});
         const placing = p.method().placeOrder({fallback: async () => {
             throw new Error('The order could not be placed.');
         }});
@@ -386,11 +488,11 @@ describe('modal Place Order', () => {
         p.affirm.options.onSuccess({checkout_token: 'TOKEN_1'});
         await assert.rejects(placing, /could not be placed/);
         assert.deepEqual(p.storage.slice(-2), [['checkout_token', null, 'payment'], ['attempt_id', null, 'payment']]);
-        assert.deepEqual(p.notices, [['clear', '']]);
+        same(p.notices, [['event', 'payment:method:success', {}]]);
     });
 
     it('treats the error event of Hyvä Checkout before 1.3.14 as a failed placement', async () => {
-        const p = page({actions: {prepareCheckout: prepared('modal')}});
+        const p = page({prepare: prepared('modal')});
         const placing = p.method().placeOrder({fallback: async () => {
             p.window.dispatch('order:place:affirm_gateway:error', {detail: {text: 'Refused.'}});
         }});
@@ -400,29 +502,8 @@ describe('modal Place Order', () => {
         assert.deepEqual(p.storage.slice(-1), [['attempt_id', null, 'payment']]);
     });
 
-    it('calls the server through hyvaCheckout.misc.call() when Hyvä Checkout 3 provides it', async () => {
-        const p = page({actions: {prepareCheckout: prepared('modal')}});
-        const viaMisc = [];
-        p.hyvaCheckout.misc = {call: async (wire, method) => {
-            viaMisc.push(method);
-            return wire[method]();
-        }};
-        p.method().placeOrder({fallback: async () => {}});
-        await settle();
-        assert.deepEqual(viaMisc, ['prepareCheckout']);
-        assert.deepEqual(p.affirm.calls.map((call) => call[0]), ['reset', 'checkout', 'open']);
-    });
-
-    it('reports a failed request that hyvaCheckout.misc.call() rejects', async () => {
-        const p = page({actions: {prepareCheckout: prepared('modal')}});
-        p.hyvaCheckout.misc = {call: () => Promise.reject(new Error('The request of prepareCheckout() failed.'))};
-        await assert.rejects(p.method().placeOrder({fallback: async () => {}}), /unavailable/);
-        assert.deepEqual(p.notices.at(-1), ['error', MESSAGES.unavailable]);
-        assert.deepEqual(p.affirm.calls, []);
-    });
-
     it('keeps reported errors out of Hyvä Checkout 3 handleException() and passes the rest on', async () => {
-        const p = page({actions: {prepareCheckout: prepared('modal')}});
+        const p = page({prepare: prepared('modal')});
         const placing = p.method().placeOrder({fallback: async () => {}});
         await settle();
         p.affirm.options.onFail({reason: 'canceled'});
@@ -440,7 +521,7 @@ describe('modal Place Order', () => {
     });
 
     it('reports blocked browser storage', async () => {
-        const p = page({actions: {prepareCheckout: prepared('modal')}, storageFails: true});
+        const p = page({prepare: prepared('modal'), storageFails: true});
         const placing = p.method().placeOrder({fallback: async () => assert.fail('must not place')});
         await settle();
         p.affirm.options.onSuccess({checkout_token: 'TOKEN_1'});
@@ -448,7 +529,7 @@ describe('modal Place Order', () => {
     });
 
     it('returns the focus to Place Order once Hyvä re-enables it', async () => {
-        const p = page({actions: {prepareCheckout: prepared('modal')}});
+        const p = page({prepare: prepared('modal')});
         const placing = p.method().placeOrder({fallback: async () => {}});
         await settle();
         // Affirm's frame took the focus; its removal leaves it on the body.
@@ -464,7 +545,7 @@ describe('modal Place Order', () => {
     });
 
     it('leaves the focus alone when the shopper already moved on', async () => {
-        const p = page({actions: {prepareCheckout: prepared('modal')}});
+        const p = page({prepare: prepared('modal')});
         const placing = p.method().placeOrder({fallback: async () => {}});
         await settle();
         p.document.activeElement = {focus: () => assert.fail('not this one')};
@@ -478,7 +559,7 @@ describe('modal Place Order', () => {
 
 describe('redirect Place Order', () => {
     it('opens Affirm with the checkout object and keeps Place Order busy', async () => {
-        const p = page({actions: {prepareCheckout: prepared('redirect')}});
+        const p = page({prepare: prepared('redirect')});
         let done = false;
         p.method().placeOrder({fallback: async () => assert.fail('redirect never places here')})
             .then(() => {
@@ -497,7 +578,7 @@ describe('redirect Place Order', () => {
     });
 
     it('falls back to post() without open()', async () => {
-        const p = page({actions: {prepareCheckout: prepared('redirect')}, affirm: fakeAffirm({withOpen: false})});
+        const p = page({prepare: prepared('redirect'), affirm: fakeAffirm({withOpen: false})});
         p.method().placeOrder({fallback: async () => {}}).catch(() => {});
         await settle();
         assert.deepEqual(p.affirm.calls.map((call) => call[0]), ['reset', 'checkout', 'post']);
@@ -510,7 +591,7 @@ describe('redirect Place Order', () => {
             [(p) => p.advance(60000), MESSAGES.unavailable],
         ];
         for (const [trigger, message] of scenarios) {
-            const p = page({actions: {prepareCheckout: prepared('redirect')}});
+            const p = page({prepare: prepared('redirect')});
             const placing = p.method().placeOrder({fallback: async () => {}});
             await settle();
             trigger(p);
@@ -521,6 +602,19 @@ describe('redirect Place Order', () => {
 
 describe('inline widget', () => {
     const inline = (total) => ({total, metadata: {mode: 'inline'}});
+
+    it('calls the inline action through hyvaCheckout.misc.call() when Hyvä Checkout 3 provides it', async () => {
+        const p = page();
+        const viaMisc = [];
+        p.hyvaCheckout.misc = {call: async (wire, method) => {
+            viaMisc.push(method);
+            return wire[method]();
+        }};
+        p.mount();
+        await p.method().initialize();
+        assert.deepEqual(viaMisc, ['prepareInline']);
+        assert.deepEqual(p.magewire.calls, ['prepareInline']);
+    });
 
     it('asks the server for its object once the method is active', async () => {
         const p = page({actions: {prepareInline: (state) => {

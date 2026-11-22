@@ -27,7 +27,7 @@ class FrontendViewTest extends TestCase
     /**
      * sha256 of the window.hyvaAffirm loader script (contract v1, frozen and identical in both Affirm modules).
      */
-    private const LOADER_SHA256 = 'c45fa08e48cac4518ad0aa8938e562971a49e0e36f700b2510bdc13bddcce23d';
+    private const LOADER_SHA256 = '297bad49238377fbc58324060ea425b8111a9ef416403485d3d700a4d9567613';
 
     /**
      * @return array<string, array{0: string}>
@@ -124,7 +124,7 @@ class FrontendViewTest extends TestCase
         $this->assertStringStartsWith('<div wire:key="affirm-gateway"', $html, 'Magewire marks the first element');
         $this->assertStringEndsWith('</div>', $html);
         $this->assertStringContainsString('x-data="hyvaCheckoutAffirmGateway"', $html);
-        foreach (['data-mode', 'data-edu', 'data-inline-version', 'data-inline-checkout'] as $attribute) {
+        foreach (['data-edu', 'data-inline-version', 'data-inline-checkout'] as $attribute) {
             $this->assertStringContainsString($attribute . '="', $html);
         }
         $this->assertStringNotContainsString('<script', $template, 'scripts do not run inside Magewire morphs');
@@ -168,7 +168,7 @@ class FrontendViewTest extends TestCase
         $template = $this->template('js/sdk-loader.phtml');
 
         $this->assertSame(self::LOADER_SHA256, hash('sha256', $this->script($template)));
-        $this->assertStringContainsString('\Hyva\CheckoutAffirm\ViewModel\Sdk::class', $template);
+        $this->assertStringContainsString('use Hyva\CheckoutAffirm\ViewModel\Sdk;', $template);
     }
 
     /**

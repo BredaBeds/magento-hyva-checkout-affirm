@@ -5,6 +5,56 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-11-21
+
+Fixes from a code review of both modules (2026-11-20). Run `bin/magento setup:upgrade` (new index) and, in production
+mode, `setup:di:compile`.
+
+### Fixed
+
+- Place Order works when it sits on a later step than the payment method list, as in Hyvä's own "mobile" checkout
+  (payment, then summary): the checkout is now prepared by a plain POST to `hyva_affirm/checkout/prepare`
+  (`Controller\Checkout\Prepare`, form key required) instead of a Magewire action of the method's component, which
+  exists only on the payment step. The preparation itself moved to `Model\Checkout\Preparation`.
+- A store that does not allow guest checkout for the cart ("Allow Guest Checkout" off, or a cart with downloadable
+  products) no longer gets a guest order from the redirect return: the preparation refuses such a cart before Affirm
+  opens, and the confirmation refuses it again before the claim (new failure reason `guest_not_allowed`).
+- Cart problems Magento would refuse at submit (an item error, the minimum order amount) are found before the shopper
+  applies at Affirm.
+- Tax-inclusive catalog prices no longer decline carts with quantities above one: the item check allows the rounding
+  of the unit price per unit (half a cent each, at least one cent per row).
+- Two simultaneous preparations of one cart can no longer supersede each other's new attempt (a lock per cart).
+- With only this module installed, Affirm's Luma cart-refresh script (`affirm_clear_mini_cart`, RequireJS) is removed
+  from the success page.
+- A retry of `affirm.js` after a script error adds a fresh tag; a retry after a timeout waits for the tag still
+  downloading (affirm.js has no guard against running twice) and fails at once if that tag fails.
+- Discount entries whose labels give the same key ("10" and "Discount 10") no longer overwrite each other.
+- `hyva:affirm:attempt:resolve` changes an attempt only if it is unchanged since it was read (as the escalation job
+  does).
+
+### Changed
+
+- The payment method's Magewire component runs as a native Magewire 3 component on Hyvä Checkout 3
+  (`#[HandleBackwardsCompatibility(enabled: false)]`), so `Hyva_CheckoutV1bc` can be removed without Hyvä reporting it
+  as Checkout 1.x code. Hyvä Checkout 1.3 (Magewire 1) ignores the attribute.
+- The payment method's Magewire component (`AffirmGateway`) keeps only the inline widget and Hyvä's evaluation; its
+  public `checkout`, `attemptId`, `errorMessage` and `mode` and the action `prepareCheckout()` are gone. Its DI
+  arguments `attemptLimit` and `attemptWindowSeconds` moved to `Model\Checkout\Preparation` (new: `lockTimeoutSeconds`);
+  set on the component they are now ignored.
+- The payment script registers through `hyvaCheckout.api.after()` and clears its message without Hyvä's
+  "Something went wrong" placeholder text. The component constructor is a global (`window.hyvaCheckoutAffirmGateway`)
+  that a theme can wrap.
+- One checkout token pattern (`Attempt::isValidToken()`) for the return URL, the place-order service and the
+  verifier; the return URL ignores anything else instead of putting it back into a URL.
+- The return page asks every 3 seconds, then every 10 seconds once it shows that the wait takes longer.
+- Log redaction also covers tokens inside JSON text; the confirm POST session skip matches the path in any case.
+- The admin grid drops two columns that were always empty for the rows it lists (order number, reason).
+- New index `(state, expires_at)` for the cleanup job; `module.xml` sequence lists every module whose classes are used.
+- Templates import classes with `use` statements. PHPStan (2.x) runs clean; PHPCS warnings are down to the static
+  factory methods of value objects.
+
+## [0.2.2] - 2026-11-20
+
 ### Accessibility
 
 - The in-progress return page no longer reloads itself every three seconds (a `<meta http-equiv="refresh">`, WCAG
@@ -13,6 +63,15 @@ All notable changes to this project are documented in this file. The format foll
   status box announces when the wait takes longer than usual, and a "Check the status now" link follows the wait by
   hand, also without script. New template `checkout/attempt/status-check.phtml`; `Controller\Checkout\Confirm` takes
   a `JsonFactory`.
+
+## [0.2.1] - 2026-11-13
+
+### Changed
+
+- README rewritten in plain language and condensed; the technical detail and the operations notes are in
+  `docs/reference.md`.
+
+## [0.2.0] - 2026-11-05
 
 ### Fixed
 
@@ -39,8 +98,6 @@ All notable changes to this project are documented in this file. The format foll
 - `AttemptRepositoryInterface`: `findLatestForQuote()` replaced by `supersedeOthersForQuote()`; the unused
   `markResolved()` removed. Unused `PlacementContext::isPlacing()` and `ViewModel\Method::getTitle()` removed.
 - Requires `composer-runtime-api ^2.0`.
-- README rewritten in plain language and condensed; the technical detail and the operations notes are in
-  `docs/reference.md`.
 
 ## [0.1.1] - 2026-10-27
 

@@ -20,6 +20,11 @@ final class Attempt // phpcs:ignore Magento2.PHP.FinalImplementation -- immutabl
 {
     public const ID_PATTERN = '/^[0-9a-f]{64}\z/';
 
+    /**
+     * Shape of an Affirm checkout token (or checkout id); anything else never reaches Affirm or the database.
+     */
+    public const TOKEN_PATTERN = '/^[A-Za-z0-9_-]{1,128}\z/';
+
     public const DATE_FORMAT = 'Y-m-d H:i:s';
 
     public const REASON_CANCELLED = 'cancelled';
@@ -28,6 +33,7 @@ final class Attempt // phpcs:ignore Magento2.PHP.FinalImplementation -- immutabl
     public const REASON_VERIFICATION_FAILED = 'verification_failed';
     public const REASON_CART_CHANGED = 'cart_changed';
     public const REASON_UNAVAILABLE = 'unavailable';
+    public const REASON_GUEST_NOT_ALLOWED = 'guest_not_allowed';
     public const REASON_SUPERSEDED = 'superseded';
     public const REASON_PLACEMENT_FAILED = 'placement_failed';
     public const REASON_RESOLVED_PLACED = 'resolved_placed';
@@ -102,6 +108,17 @@ final class Attempt // phpcs:ignore Magento2.PHP.FinalImplementation -- immutabl
     }
 
     /**
+     * Whether the value has the shape of an Affirm checkout token.
+     *
+     * @param string $checkoutToken
+     * @return bool
+     */
+    public static function isValidToken(#[\SensitiveParameter] string $checkoutToken): bool
+    {
+        return preg_match(self::TOKEN_PATTERN, $checkoutToken) === 1;
+    }
+
+    /**
      * The value stored in token_hash for a checkout token.
      *
      * @param string $checkoutToken
@@ -115,7 +132,7 @@ final class Attempt // phpcs:ignore Magento2.PHP.FinalImplementation -- immutabl
     /**
      * Build from a database row.
      *
-     * @param array<string, mixed> $row
+     * @param array<string,mixed> $row
      * @return self
      * @throws InvalidArgumentException when a required column is missing
      * @throws UnexpectedValueException when the stored state is unknown
@@ -159,7 +176,7 @@ final class Attempt // phpcs:ignore Magento2.PHP.FinalImplementation -- immutabl
     /**
      * Column => value, as stored.
      *
-     * @return array<string, int|string|null>
+     * @return array<string,int|string|null>
      */
     public function toArray(): array
     {

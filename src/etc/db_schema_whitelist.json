@@ -24,6 +24,7 @@
         "index": {
             "HYVA_AFFIRM_CHECKOUT_ATTEMPT_QUOTE_ID_STATE": true,
             "HYVA_AFFIRM_CHECKOUT_ATTEMPT_STATE_UPDATED_AT": true,
+            "HYVA_AFFIRM_CHECKOUT_ATTEMPT_STATE_EXPIRES_AT": true,
             "HYVA_AFFIRM_CHECKOUT_ATTEMPT_RESERVED_INCREMENT_ID_STORE_ID": true
         },
         "constraint": {

@@ -18,8 +18,8 @@ class AttemptReference extends Column
     /**
      * Add the shortened id to every row.
      *
-     * @param array<string, mixed> $dataSource
-     * @return array<string, mixed>
+     * @param array<string,mixed> $dataSource
+     * @return array<string,mixed>
      */
     public function prepareDataSource(array $dataSource): array
     {

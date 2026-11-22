@@ -233,7 +233,7 @@ class TotalsBuilder
      * The discount amount includes shipping discounts. Nothing else is ever reported as a discount.
      *
      * @param Quote\Address $address
-     * @return array<string, array{discount_amount: int, discount_display_name: string}>
+     * @return array<string,array{discount_amount: int,discount_display_name: string}>
      */
     private function discounts(Quote\Address $address): array
     {
@@ -246,7 +246,7 @@ class TotalsBuilder
         if ($perRule !== [] && array_sum($perRule) === $totalCents) {
             $discounts = [];
             foreach ($perRule as $label => $cents) {
-                $discounts[$this->discountKey((string) $label)] = [
+                $discounts[$this->discountKey((string) $label, $discounts)] = [
                     'discount_amount' => $cents,
                     'discount_display_name' => (string) $label,
                 ];
@@ -259,7 +259,7 @@ class TotalsBuilder
         $label = $label !== '' ? $label : (string) __('Discount');
 
         return [
-            $this->discountKey($label) => ['discount_amount' => $totalCents, 'discount_display_name' => $label],
+            $this->discountKey($label, []) => ['discount_amount' => $totalCents, 'discount_display_name' => $label],
         ];
     }
 
@@ -267,7 +267,7 @@ class TotalsBuilder
      * Discount cents per rule label from the sales-rule breakdown on the address (present after collectTotals()).
      *
      * @param Quote\Address $address
-     * @return array<string, int>
+     * @return array<string,int>
      */
     private function discountsPerRule(Quote\Address $address): array
     {
@@ -304,14 +304,26 @@ class TotalsBuilder
     }
 
     /**
-     * Discount object key; numeric keys would turn the JSON object into an array.
+     * Discount object key, unique among the keys taken; numeric keys would turn the JSON object into an array.
+     *
+     * Rule labels "10" and "Discount 10" would share a key: a later one gets " (2)", " (3)", ... appended, so no
+     * entry overwrites another.
      *
      * @param string $label
+     * @param array<string,mixed> $taken discount objects built so far
      * @return string
      */
-    private function discountKey(string $label): string
+    private function discountKey(string $label, array $taken): string
     {
-        return ctype_digit($label) ? (string) __('Discount') . ' ' . $label : $label;
+        $base = ctype_digit($label) ? (string) __('Discount') . ' ' . $label : $label;
+        $key = $base;
+        $n = 1;
+        while (array_key_exists($key, $taken)) {
+            $n++;
+            $key = $base . ' (' . $n . ')';
+        }
+
+        return $key;
     }
 
     /**

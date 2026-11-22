@@ -8,5 +8,7 @@ parameters:
     treatPhpDocTypesAsCertain: false
     reportUnmatchedIgnoredErrors: false
     ignoreErrors:
+        # Magewire 3's v1-mode opt-out on AffirmGateway; Magewire 1 (Hyvä Checkout 1.3) has no such class and ignores it.
+        - '#Attribute class Magewirephp\\Magewire\\Features\\SupportMagewireBackwardsCompatibility\\HandleBackwardsCompatibility does not exist#'
         # Magento generates factories, proxies and interceptors at compile time.
         - '#(Factory|\\Proxy)(\\\\)?.* not found#'

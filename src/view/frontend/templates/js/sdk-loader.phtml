@@ -4,15 +4,24 @@
  *
  * window.hyvaAffirm loader contract v1 — keep this script byte-identical in Hyva_AstoundAffirm and Hyva_CheckoutAffirm.
  *
- * @var \Magento\Framework\View\Element\Template $block
- * @var \Hyva\Theme\Model\ViewModelRegistry $viewModels
- * @var \Hyva\Theme\ViewModel\HyvaCsp $hyvaCsp
+ * @var Template $block
+ * @var ViewModelRegistry $viewModels
+ * @var HyvaCsp $hyvaCsp
  */
-$sdk = $viewModels->require(\Hyva\CheckoutAffirm\ViewModel\Sdk::class);
+
+use Hyva\CheckoutAffirm\ViewModel\Sdk;
+use Hyva\Theme\Model\ViewModelRegistry;
+use Hyva\Theme\ViewModel\HyvaCsp;
+use Magento\Framework\View\Element\Template;
+
+$sdk = $viewModels->require(Sdk::class);
 if (!$sdk->isConfigured()) {
     return;
 }
-$config = json_encode($sdk->getLoaderConfig(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+$config = json_encode(
+    $sdk->getLoaderConfig(),
+    JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR
+);
 ?>
 <script>
 window.hyvaAffirmConfig = window.hyvaAffirmConfig || <?= /* @noEscape */ $config ?>;
@@ -20,7 +29,9 @@ window.hyvaAffirmConfig = window.hyvaAffirmConfig || <?= /* @noEscape */ $config
     'use strict';
     // window.hyvaAffirm loader contract v1 (frozen; identical in Hyva_AstoundAffirm and Hyva_CheckoutAffirm).
     // load(): injects Affirm's documented _affirm_config and affirm.js once; resolves with window.affirm on
-    // affirm.ui.ready, rejects on a script error or after 10 s; a rejected load may be retried.
+    // affirm.ui.ready, rejects on a script error or after 10 s; a rejected load may be retried. A retry after a
+    // script error adds a fresh tag; a retry after a timeout waits for the tag still downloading, since affirm.js
+    // has no guard against running twice and a removed tag would still run once it arrives.
     // refresh(): debounced affirm.ui.refresh() once loaded. whenIdle(fn): resolves (and runs fn) after
     // DOMContentLoaded and an idle period (requestIdleCallback, 2 s timeout).
     const VERSION = 1;
@@ -30,7 +41,10 @@ window.hyvaAffirmConfig = window.hyvaAffirmConfig || <?= /* @noEscape */ $config
     }
     let loading = null;
     let refreshTimer = null;
-    const hasSdkScript = () => !!document.querySelector('script[data-hyva-affirm-sdk]');
+    // The page's affirm.js tag while it downloads or has run; null before the first load and after an error.
+    let sdkScript = null;
+    // Rejections of the loads waiting on sdkScript, run when it fails.
+    const onScriptError = new Set();
     const installStub = () => {
         // Readable form of Affirm's documented embed snippet: a queueing window.affirm that affirm.js drains.
         const a = {};
@@ -50,42 +64,52 @@ window.hyvaAffirmConfig = window.hyvaAffirmConfig || <?= /* @noEscape */ $config
         a.checkout(settings);
         window.affirm = a;
     };
+    const injectScript = () => {
+        if (!(window.affirm && window.affirm.ui && typeof window.affirm.ui.ready === 'function')) {
+            installStub();
+        }
+        const script = document.createElement('script');
+        script.async = true;
+        script.src = config.script;
+        script.dataset.hyvaAffirmSdk = '';
+        script.addEventListener('error', () => {
+            script.remove();
+            if (sdkScript === script) {
+                sdkScript = null;
+                onScriptError.forEach((fail) => fail());
+            }
+        });
+        sdkScript = script;
+        document.head.appendChild(script);
+    };
     const load = () => {
         if (loading) {
             return loading;
         }
         loading = new Promise((resolve, reject) => {
             let settled = false;
-            const fail = (reason) => {
-                if (!settled) {
-                    settled = true;
+            const settle = (reason) => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                clearTimeout(timer);
+                onScriptError.delete(failed);
+                if (reason) {
                     loading = null;
                     reject(new Error('Affirm: ' + reason));
-                }
-            };
-            const timer = setTimeout(() => fail('affirm.js timed out'), 10000);
-            if (!hasSdkScript()) {
-                if (!(window.affirm && window.affirm.ui && typeof window.affirm.ui.ready === 'function')) {
-                    installStub();
-                }
-                const script = document.createElement('script');
-                script.async = true;
-                script.src = config.script;
-                script.dataset.hyvaAffirmSdk = '';
-                script.addEventListener('error', () => {
-                    clearTimeout(timer);
-                    script.remove();
-                    fail('affirm.js failed to load');
-                });
-                document.head.appendChild(script);
-            }
-            window.affirm.ui.ready(() => {
-                clearTimeout(timer);
-                if (!settled) {
-                    settled = true;
+                } else {
                     resolve(window.affirm);
                 }
-            });
+            };
+            const failed = () => settle('affirm.js failed to load');
+            const timer = setTimeout(() => settle('affirm.js timed out'), 10000);
+            onScriptError.add(failed);
+            if (!sdkScript) {
+                injectScript();
+            }
+            // Queued on Affirm's stub (or run at once by affirm.js): a load that already gave up ignores it.
+            window.affirm.ui.ready(() => settle(null));
         });
         return loading;
     };
@@ -102,7 +126,8 @@ window.hyvaAffirmConfig = window.hyvaAffirmConfig || <?= /* @noEscape */ $config
         }, 100);
     };
     const whenIdle = (fn) => new Promise((resolve) => {
-        const idle = () => (window.requestIdleCallback || ((cb) => setTimeout(cb, 1)))(() => resolve(), {timeout: 2000});
+        const requestIdle = window.requestIdleCallback || ((cb) => setTimeout(cb, 1));
+        const idle = () => requestIdle(() => resolve(), {timeout: 2000});
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', idle, {once: true});
         } else {

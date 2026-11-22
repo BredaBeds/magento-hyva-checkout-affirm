@@ -6,22 +6,23 @@ declare(strict_types=1);
 
 namespace Hyva\CheckoutAffirm\Test\Unit\Magewire\Payment\Method;
 
-use DateTimeInterface;
 use Hyva\Checkout\Model\ConfigData\HyvaThemes\Developer\SystemConfigEvaluationApi;
 use Hyva\Checkout\Model\Magewire\Component\Evaluation\ErrorEventMessage;
 use Hyva\Checkout\Model\Magewire\Component\Evaluation\Success;
 use Hyva\Checkout\Model\Magewire\Component\EvaluationResultFactory;
 use Hyva\CheckoutAffirm\Magewire\Payment\Method\AffirmGateway;
-use Hyva\CheckoutAffirm\Model\Attempt\Attempt;
 use Hyva\CheckoutAffirm\Model\Attempt\AttemptRepositoryInterface;
 use Hyva\CheckoutAffirm\Model\Attempt\OwnerKeyInterface;
 use Hyva\CheckoutAffirm\Model\Attempt\SnapshotInterface;
-use Hyva\CheckoutAffirm\Model\Attempt\State;
 use Hyva\CheckoutAffirm\Model\Checkout\AccountingException;
 use Hyva\CheckoutAffirm\Model\Checkout\CheckoutObjectBuilderInterface;
 use Hyva\CheckoutAffirm\Model\Checkout\ContactBuilder;
+use Hyva\CheckoutAffirm\Model\Checkout\GuestCheckout;
+use Hyva\CheckoutAffirm\Model\Checkout\Preparation;
 use Hyva\CheckoutAffirm\ViewModel\Method;
+use Magento\Checkout\Helper\Data as CheckoutHelper;
 use Magento\Checkout\Model\Session as CheckoutSession;
+use Magento\Framework\Lock\LockManagerInterface;
 use Magento\Payment\Model\Checks\Composite;
 use Magento\Payment\Model\Checks\SpecificationFactory;
 use Magento\Payment\Model\MethodInterface;
@@ -40,8 +41,6 @@ class AffirmGatewayTest extends TestCase
     private const STORE_ID = 1;
     private const RESERVED = '000000123';
     private const OWNER = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
-    private const SNAPSHOT = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
-    private const ATTEMPT_ID = 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc';
     private const TOTAL = 132025;
 
     /** @var Quote&MockObject */
@@ -59,14 +58,8 @@ class AffirmGatewayTest extends TestCase
     /** @var CheckoutObjectBuilderInterface&MockObject */
     private CheckoutObjectBuilderInterface $builder;
 
-    /** @var ContactBuilder&MockObject */
-    private ContactBuilder $contactBuilder;
-
     /** @var AttemptRepositoryInterface&MockObject */
     private AttemptRepositoryInterface $attempts;
-
-    /** @var SnapshotInterface&MockObject */
-    private SnapshotInterface $snapshot;
 
     /** @var QuoteResource&MockObject */
     private QuoteResource $quoteResource;
@@ -114,308 +107,11 @@ class AffirmGatewayTest extends TestCase
         $this->specification->method('isApplicable')->willReturn(true);
 
         $this->builder = $this->createMock(CheckoutObjectBuilderInterface::class);
-        $this->contactBuilder = $this->createMock(ContactBuilder::class);
         $this->attempts = $this->createMock(AttemptRepositoryInterface::class);
-        $this->snapshot = $this->createMock(SnapshotInterface::class);
-        $this->snapshot->method('hash')->willReturn(self::SNAPSHOT);
         $this->quoteResource = $this->createMock(QuoteResource::class);
 
         $this->method = $this->createMock(Method::class);
-        $this->method->method('getMode')->willReturn('redirect');
         $this->method->method('isEduEnabled')->willReturn(true);
-    }
-
-    public function testPrepareCheckoutCreatesAnAttemptAndBuildsTheCheckout(): void
-    {
-        $this->attempts->method('findReusable')->with(self::QUOTE_ID, self::OWNER, self::SNAPSHOT)->willReturn(null);
-        $this->attempts->expects($this->once())->method('countRecentForQuote')
-            ->willReturnCallback(function (int $quoteId, DateTimeInterface $since): int {
-                $this->assertSame(self::QUOTE_ID, $quoteId);
-                $this->assertEqualsWithDelta(time() - 3600, $since->getTimestamp(), 5);
-
-                return 3;
-            });
-        $this->attempts->expects($this->once())->method('supersedeOthersForQuote')
-            ->with(self::QUOTE_ID, self::ATTEMPT_ID)
-            ->willReturn(1);
-        $this->attempts->expects($this->once())->method('create')
-            ->with(
-                self::QUOTE_ID,
-                self::STORE_ID,
-                null,
-                self::RESERVED,
-                'USD',
-                self::TOTAL,
-                self::SNAPSHOT,
-                self::OWNER,
-                'affirm_gateway'
-            )
-            ->willReturn($this->attempt());
-
-        $checkout = $this->checkoutObject('redirect');
-        $this->builder->expects($this->exactly(2))->method('build')->willReturnCallback(
-            function (Quote $quote, string $mode, string $attemptId) use ($checkout): array {
-                $this->assertSame(self::RESERVED, $quote->getData('reserved_order_id'), 'reserved before building');
-                if ($mode === 'inline') {
-                    $this->assertSame('', $attemptId);
-
-                    return $this->checkoutObject('inline');
-                }
-                $this->assertSame('redirect', $mode);
-                $this->assertSame(self::ATTEMPT_ID, $attemptId);
-
-                return $checkout;
-            }
-        );
-        $this->contactBuilder->expects($this->once())->method('build')->with($this->quote);
-        $this->quoteResource->expects($this->once())->method('save')->with($this->quote);
-
-        $component = $this->component();
-        $component->checkout = ['stale' => true];
-        $component->errorMessage = 'stale';
-        $component->prepareCheckout();
-
-        $this->assertNull($component->errorMessage);
-        $this->assertSame($checkout, $component->checkout);
-        $this->assertSame(self::ATTEMPT_ID, $component->attemptId);
-        $this->assertSame('redirect', $component->mode);
-        $this->assertSame([false], $this->quote->getData('collected_with_flag'));
-    }
-
-    public function testCustomerAttemptsCarryTheCustomerId(): void
-    {
-        $this->quote->setData('customer_id', '7');
-        $this->attempts->method('countRecentForQuote')->willReturn(0);
-        $this->attempts->expects($this->once())->method('create')
-            ->with(self::QUOTE_ID, self::STORE_ID, 7)
-            ->willReturn($this->attempt());
-        $this->builder->method('build')->willReturn($this->checkoutObject('modal'));
-
-        $component = $this->component();
-        $component->prepareCheckout();
-
-        $this->assertSame(self::ATTEMPT_ID, $component->attemptId);
-    }
-
-    public function testReusesAnInitiatedAttemptForTheSameCart(): void
-    {
-        $this->quote->setData('reserved_order_id', self::RESERVED);
-        $this->attempts->method('findReusable')->willReturn($this->attempt());
-        $this->attempts->expects($this->never())->method('countRecentForQuote');
-        $this->attempts->expects($this->never())->method('create');
-        $this->attempts->expects($this->never())->method('transition');
-        $this->quoteResource->expects($this->never())->method('save');
-        $this->builder->expects($this->once())->method('build')
-            ->with($this->quote, 'modal', self::ATTEMPT_ID)
-            ->willReturn($this->checkoutObject('modal'));
-
-        $component = $this->component('modal');
-        $component->prepareCheckout();
-
-        $this->assertNull($component->errorMessage);
-        $this->assertSame(self::ATTEMPT_ID, $component->attemptId);
-        $this->assertSame('modal', $component->mode);
-    }
-
-    public function testDoesNotReuseAnAttemptForAnotherOrderNumber(): void
-    {
-        $this->quote->setData('reserved_order_id', '000000999');
-        $this->attempts->method('findReusable')->willReturn($this->attempt());
-        $this->attempts->method('countRecentForQuote')->willReturn(0);
-        $newAttempt = $this->attempt(str_repeat('e', 64), State::INITIATED, '000000999');
-        $this->attempts->expects($this->once())->method('create')->willReturn($newAttempt);
-        $this->builder->method('build')->willReturn($this->checkoutObject('redirect'));
-
-        $component = $this->component();
-        $component->prepareCheckout();
-
-        $this->assertSame($newAttempt->attemptId, $component->attemptId);
-    }
-
-    public function testUnavailableMethodStopsBeforeAnyWrite(): void
-    {
-        $this->paymentMethod = $this->createMock(MethodInterface::class);
-        $this->paymentMethod->method('isAvailable')->willReturn(false);
-        $this->payment = $this->createMock(Payment::class);
-        $this->payment->method('getMethod')->willReturn('affirm_gateway');
-        $this->payment->method('getMethodInstance')->willReturn($this->paymentMethod);
-        $this->rebindPayment();
-        $this->expectNoWrites();
-
-        $component = $this->component();
-        $component->prepareCheckout();
-
-        $this->assertSame(
-            'Affirm is not available for this cart. Please choose another payment method.',
-            $component->errorMessage
-        );
-        $this->assertNull($component->checkout);
-        $this->assertNull($component->attemptId);
-    }
-
-    public function testMagentosMethodChecksAreApplied(): void
-    {
-        $this->specification = $this->createMock(Composite::class);
-        $this->specification->method('isApplicable')->willReturn(false);
-        $this->expectNoWrites();
-
-        $component = $this->component();
-        $component->prepareCheckout();
-
-        $this->assertStringStartsWith('Affirm is not available', (string) $component->errorMessage);
-    }
-
-    public function testAnotherSelectedMethodIsRefused(): void
-    {
-        $this->payment = $this->createMock(Payment::class);
-        $this->payment->method('getMethod')->willReturn('checkmo');
-        $this->rebindPayment();
-        $this->expectNoWrites();
-
-        $component = $this->component();
-        $component->prepareCheckout();
-
-        $this->assertSame('Your payment method changed. Please select Affirm again.', $component->errorMessage);
-    }
-
-    public function testIncompleteCheckoutDataStopsBeforeTheReservation(): void
-    {
-        $this->contactBuilder->method('build')
-            ->willThrowException(new AccountingException(AccountingException::REASON_MISSING_EMAIL));
-        $this->quote->expects($this->never())->method('reserveOrderId');
-        $this->expectNoWrites();
-
-        $component = $this->component();
-        $component->prepareCheckout();
-
-        $this->assertSame(
-            'Please complete your contact, address and shipping details before paying with Affirm.',
-            $component->errorMessage
-        );
-    }
-
-    public function testUnresolvedAttemptBlocksANewOne(): void
-    {
-        $this->attempts->method('hasUnresolvedForQuote')->with(self::QUOTE_ID)->willReturn(true);
-        $this->quote->expects($this->never())->method('reserveOrderId');
-        $this->attempts->expects($this->never())->method('create');
-        $this->builder->expects($this->never())->method('build');
-
-        $component = $this->component();
-        $component->prepareCheckout();
-
-        $this->assertStringContainsString('still being confirmed', (string) $component->errorMessage);
-    }
-
-    public function testThrottlesNewAttemptsPerCart(): void
-    {
-        $this->attempts->method('countRecentForQuote')->willReturn(10);
-        $this->attempts->expects($this->never())->method('create');
-        $this->attempts->expects($this->never())->method('transition');
-        $this->builder->expects($this->never())->method('build');
-
-        $component = $this->component();
-        $component->prepareCheckout();
-
-        $this->assertStringStartsWith('Too many Affirm payment attempts', (string) $component->errorMessage);
-        $this->assertSame('warning', $this->logs[0][0]);
-        $this->assertSame(['quote_id' => self::QUOTE_ID, 'limit' => 10], $this->logs[0][2]);
-    }
-
-    public function testTheThrottleIsConfigurable(): void
-    {
-        $this->attempts->method('countRecentForQuote')->willReturn(10);
-        $this->attempts->expects($this->once())->method('create')->willReturn($this->attempt());
-        $this->builder->method('build')->willReturn($this->checkoutObject('redirect'));
-
-        $component = $this->component('redirect', 11);
-        $component->prepareCheckout();
-
-        $this->assertNull($component->errorMessage);
-    }
-
-    public function testDeclinedCartCreatesNoAttempt(): void
-    {
-        $this->attempts->method('countRecentForQuote')->willReturn(0);
-        $this->builder->method('build')
-            ->willThrowException(new AccountingException(AccountingException::REASON_UNSUPPORTED_ADJUSTMENT));
-        $this->attempts->expects($this->never())->method('create');
-        $this->attempts->expects($this->never())->method('transition');
-
-        $component = $this->component();
-        $component->prepareCheckout();
-
-        $this->assertSame('Affirm is not available for this cart.', $component->errorMessage);
-        $this->assertNull($component->checkout);
-    }
-
-    public function testDeclinedReusedAttemptReportsTheBuilderMessage(): void
-    {
-        $this->quote->setData('reserved_order_id', self::RESERVED);
-        $this->attempts->method('findReusable')->willReturn($this->attempt());
-        $this->builder->method('build')
-            ->willThrowException(new AccountingException(AccountingException::REASON_UNSUPPORTED_CURRENCY));
-
-        $component = $this->component();
-        $component->prepareCheckout();
-
-        $this->assertSame('Affirm is not available for the currency of this cart.', $component->errorMessage);
-        $this->assertNull($component->attemptId);
-    }
-
-    public function testUnexpectedFailuresAreLoggedWithoutTheirMessage(): void
-    {
-        $this->snapshot = $this->createMock(SnapshotInterface::class);
-        $this->snapshot->method('hash')->willThrowException(new RuntimeException('customer ada@example.com'));
-
-        $component = $this->component();
-        $component->prepareCheckout();
-
-        $this->assertSame(
-            'Affirm is not available right now. Please try again or choose another payment method.',
-            $component->errorMessage
-        );
-        $this->assertSame('error', $this->logs[0][0]);
-        $this->assertSame(RuntimeException::class, $this->logs[0][2]['exception']);
-        $this->assertStringNotContainsString('ada@example.com', (string) json_encode($this->logs));
-    }
-
-    public function testTotalsThatDifferFromTheAttemptFailIt(): void
-    {
-        $this->quote->setData('reserved_order_id', self::RESERVED);
-        $this->attempts->method('findReusable')->willReturn($this->attempt());
-        $checkout = $this->checkoutObject('redirect');
-        $checkout['total'] = self::TOTAL + 1;
-        $this->builder->method('build')->willReturn($checkout);
-        $this->attempts->expects($this->once())->method('transition')->with(
-            self::ATTEMPT_ID,
-            State::open(),
-            State::FAILED,
-            ['failure_reason' => Attempt::REASON_CART_CHANGED]
-        );
-
-        $component = $this->component();
-        $component->prepareCheckout();
-
-        $this->assertStringStartsWith('Your cart changed', (string) $component->errorMessage);
-        $this->assertNull($component->checkout);
-        $this->assertNull($component->attemptId);
-    }
-
-    public function testEmptyCartIsRefused(): void
-    {
-        $this->quote = $this->getMockBuilder(Quote::class)
-            ->disableOriginalConstructor()
-            ->onlyMethods(['getId', 'hasItems', 'getPayment'])
-            ->getMock();
-        $this->quote->method('getId')->willReturn(null);
-        $this->quote->method('getPayment')->willReturn($this->payment);
-        $this->expectNoWrites();
-
-        $component = $this->component();
-        $component->prepareCheckout();
-
-        $this->assertSame('Your cart is empty or has expired. Please reload the page.', $component->errorMessage);
     }
 
     public function testEvaluationPassesWhileAffirmIsAvailable(): void
@@ -438,14 +134,6 @@ class AffirmGatewayTest extends TestCase
             'Affirm is not available for this cart. Please choose another payment method.',
             $result->getMessage()
         );
-    }
-
-    public function testEvaluationIgnoresAnEarlierErrorMessage(): void
-    {
-        $component = $this->component();
-        $component->errorMessage = 'Too many Affirm payment attempts for this cart.';
-
-        $this->assertInstanceOf(Success::class, $component->evaluateCompletion($this->resultFactory()));
     }
 
     public function testEvaluationLeavesOtherMethodsAlone(): void
@@ -471,7 +159,7 @@ class AffirmGatewayTest extends TestCase
         $this->assertSame('error', $this->logs[0][0]);
     }
 
-    public function testEvaluationReusesTheAvailabilityOfThePreparation(): void
+    public function testEvaluationReusesTheAvailabilityOfTheInlineRebuild(): void
     {
         $this->paymentMethod = $this->createMock(MethodInterface::class);
         $this->paymentMethod->expects($this->once())->method('isAvailable')->willReturn(false);
@@ -481,7 +169,7 @@ class AffirmGatewayTest extends TestCase
         $this->rebindPayment();
 
         $component = $this->component();
-        $component->prepareCheckout();
+        $component->prepareInline();
 
         $this->assertInstanceOf(ErrorEventMessage::class, $component->evaluateCompletion($this->resultFactory()));
     }
@@ -491,7 +179,6 @@ class AffirmGatewayTest extends TestCase
         $component = $this->component();
         $component->mount();
 
-        $this->assertSame('redirect', $component->mode);
         $this->assertTrue($component->edu);
     }
 
@@ -631,7 +318,7 @@ class AffirmGatewayTest extends TestCase
             }
         }
         sort($own);
-        $this->assertSame(['evaluateCompletion', 'mount', 'prepareCheckout', 'prepareInline', 'refreshInline'], $own);
+        $this->assertSame(['evaluateCompletion', 'mount', 'prepareInline', 'refreshInline'], $own);
         $this->assertTrue($class->getMethod('refreshInline')->isVariadic());
 
         $component = $this->component();
@@ -650,6 +337,19 @@ class AffirmGatewayTest extends TestCase
         $this->assertSame(['refreshInline'], array_values(array_unique($listeners)));
     }
 
+    public function testRunsAsANativeMagewire3Component(): void
+    {
+        // Read without instantiating: on Magewire 1 the attribute class does not exist and is never resolved.
+        $attributes = (new ReflectionClass(AffirmGateway::class))->getAttributes();
+
+        $this->assertCount(1, $attributes);
+        $this->assertSame(
+            'Magewirephp\Magewire\Features\SupportMagewireBackwardsCompatibility\HandleBackwardsCompatibility',
+            $attributes[0]->getName()
+        );
+        $this->assertSame(['enabled' => false], $attributes[0]->getArguments());
+    }
+
     public function testPublicStateDefaults(): void
     {
         $component = $this->component();
@@ -661,12 +361,8 @@ class AffirmGatewayTest extends TestCase
         }
 
         $this->assertSame([
-            'checkout' => null,
-            'attemptId' => null,
-            'errorMessage' => null,
             'inlineCheckout' => null,
             'inlineVersion' => 0,
-            'mode' => 'modal',
             'edu' => false,
         ], $state);
     }
@@ -682,14 +378,8 @@ class AffirmGatewayTest extends TestCase
         return $value;
     }
 
-    private function component(string $mode = 'redirect', int $attemptLimit = 10): AffirmGateway
+    private function component(): AffirmGateway
     {
-        if ($mode !== 'redirect') {
-            $this->method = $this->createMock(Method::class);
-            $this->method->method('getMode')->willReturn($mode);
-            $this->method->method('isEduEnabled')->willReturn(true);
-        }
-
         $session = $this->createMock(CheckoutSession::class);
         $session->method('getQuote')->willReturn($this->quote);
 
@@ -712,19 +402,20 @@ class AffirmGatewayTest extends TestCase
             );
         }
 
-        return new AffirmGateway(
-            $session,
+        $preparation = new Preparation(
             $this->builder,
-            $this->contactBuilder,
+            $this->createMock(ContactBuilder::class),
             $this->attempts,
             $ownerKey,
-            $this->snapshot,
+            $this->createMock(SnapshotInterface::class),
             $this->quoteResource,
             $specificationFactory,
-            $this->method,
-            $logger,
-            $attemptLimit
+            new GuestCheckout($this->createMock(CheckoutHelper::class)),
+            $this->createMock(LockManagerInterface::class),
+            $logger
         );
+
+        return new AffirmGateway($session, $this->builder, $preparation, $this->method, $logger);
     }
 
     private function rebindPayment(): void
@@ -738,14 +429,6 @@ class AffirmGatewayTest extends TestCase
         $this->quote->method('getPayment')->willReturn($this->payment);
         $this->quote->method('collectTotals')->willReturnSelf();
         $this->quote->setData(['store_id' => self::STORE_ID]);
-    }
-
-    private function expectNoWrites(): void
-    {
-        $this->quoteResource->expects($this->never())->method('save');
-        $this->attempts->expects($this->never())->method('create');
-        $this->attempts->expects($this->never())->method('transition');
-        $this->builder->expects($this->never())->method('build');
     }
 
     private function expectNoAttemptAccess(): void
@@ -778,33 +461,5 @@ class AffirmGatewayTest extends TestCase
             'total' => self::TOTAL,
             'currency' => 'USD',
         ];
-    }
-
-    private function attempt(
-        string $attemptId = self::ATTEMPT_ID,
-        State $state = State::INITIATED,
-        string $reserved = self::RESERVED
-    ): Attempt {
-        return new Attempt(
-            $attemptId,
-            self::OWNER,
-            self::QUOTE_ID,
-            self::STORE_ID,
-            null,
-            $reserved,
-            'USD',
-            self::TOTAL,
-            'affirm_gateway',
-            self::SNAPSHOT,
-            $state,
-            null,
-            null,
-            null,
-            null,
-            null,
-            '2026-10-08 10:00:00',
-            '2026-10-08 10:00:00',
-            '2026-10-08 11:00:00'
-        );
     }
 }

@@ -230,6 +230,23 @@ class ConfirmTest extends TestCase
         );
     }
 
+    public function testATokenOfAnotherShapeIsNeverPutBackIntoAUrl(): void
+    {
+        $this->post = true;
+        $this->params = ['attempt' => self::ATTEMPT_ID, 'checkout_token' => str_repeat('A', 129) . '<x>'];
+
+        $this->controller->execute();
+
+        $this->assertSame(
+            'hyva_affirm/checkout/confirm ' . json_encode([
+                '_secure' => true,
+                '_nosid' => true,
+                'attempt' => self::ATTEMPT_ID,
+            ]),
+            $this->redirects[0]['url']
+        );
+    }
+
     public function testPlacedOrderGoesToTheSuccessPage(): void
     {
         foreach ([false, true] as $replay) {

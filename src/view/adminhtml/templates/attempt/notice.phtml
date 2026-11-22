@@ -2,9 +2,13 @@
 /**
  * Copyright (c) 2026 Breda Beds. Licensed under the MIT licence; see LICENSE.
  *
- * @var \Magento\Backend\Block\Template $block
- * @var \Magento\Framework\Escaper $escaper
+ * @var Template $block
+ * @var Escaper $escaper
  */
+
+use Magento\Backend\Block\Template;
+use Magento\Framework\Escaper;
+
 ?>
 <div class="message message-notice">
     <p><?= $escaper->escapeHtml(__(

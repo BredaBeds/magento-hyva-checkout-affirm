@@ -173,8 +173,15 @@ class ResolveAttempt extends Command
             $set = ['failure_reason' => Attempt::REASON_RESOLVED_VOIDED];
         }
 
-        // Compare-and-swap on the state checked above: an attempt that moved on meanwhile is not resolved.
-        if (!$this->attempts->transition($attempt->attemptId, [$attempt->state], State::RESOLVED, $set)) {
+        // Compare-and-swap on the state and the last change read above (as the escalation job does): an attempt that
+        // moved on meanwhile, even through another request touching it, is not resolved.
+        if (!$this->attempts->transition(
+            $attempt->attemptId,
+            [$attempt->state],
+            State::RESOLVED,
+            $set,
+            ['updated_at' => $attempt->updatedAt]
+        )) {
             return $this->refuse($output, sprintf(
                 'The attempt changed while it was being resolved. Check it again with %s.',
                 ListAttempts::NAME

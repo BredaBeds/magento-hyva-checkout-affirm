@@ -27,7 +27,7 @@ interface CheckoutObjectBuilderInterface
      * @param Quote $quote
      * @param string $mode self::MODE_MODAL|self::MODE_REDIRECT|self::MODE_INLINE
      * @param string $attemptId the attempt the return URLs point to; empty for MODE_INLINE
-     * @return array<string, mixed> Affirm checkout object
+     * @return array<string,mixed> Affirm checkout object
      * @throws LocalizedException
      */
     public function build(Quote $quote, string $mode, #[\SensitiveParameter] string $attemptId): array;

@@ -6,9 +6,13 @@
  * private_content_version, so the cached cart could still show the ordered items. Hyvä's documented forced
  * refresh: remove mage-cache-sessid and dispatch reload-customer-section-data.
  *
- * @var \Magento\Framework\View\Element\Template $block
- * @var \Hyva\Theme\ViewModel\HyvaCsp|null $hyvaCsp
+ * @var Template $block
+ * @var HyvaCsp|null $hyvaCsp
  */
+
+use Hyva\Theme\ViewModel\HyvaCsp;
+use Magento\Framework\View\Element\Template;
+
 ?>
 <script>
     (() => {

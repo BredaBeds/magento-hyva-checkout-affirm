@@ -20,8 +20,8 @@ class GrandTotal extends Column
      * @param ContextInterface $context
      * @param UiComponentFactory $uiComponentFactory
      * @param PriceCurrencyInterface $priceCurrency
-     * @param array<string, mixed> $components
-     * @param array<string, mixed> $data
+     * @param array<string,mixed> $components
+     * @param array<string,mixed> $data
      */
     public function __construct(
         ContextInterface $context,
@@ -36,8 +36,8 @@ class GrandTotal extends Column
     /**
      * Replace the cents of every row with the formatted amount.
      *
-     * @param array<string, mixed> $dataSource
-     * @return array<string, mixed>
+     * @param array<string,mixed> $dataSource
+     * @return array<string,mixed>
      */
     public function prepareDataSource(array $dataSource): array
     {

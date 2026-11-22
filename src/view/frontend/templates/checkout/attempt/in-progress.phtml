@@ -10,10 +10,14 @@
  * status-check.phtml replaces its text when it starts, and again after about half a minute. Both changes are
  * announced: the box is a status region.
  *
- * @var \Magento\Framework\View\Element\Template $block
- * @var \Magento\Framework\Escaper $escaper
- * @var \Hyva\Theme\ViewModel\HyvaCsp|null $hyvaCsp
+ * @var Template $block
+ * @var Escaper $escaper
+ * @var HyvaCsp|null $hyvaCsp
  */
+
+use Hyva\Theme\ViewModel\HyvaCsp;
+use Magento\Framework\Escaper;
+use Magento\Framework\View\Element\Template;
 
 $inProgress = $block->getData('status') !== 'uncertain';
 $message = (string) $block->getData('message');

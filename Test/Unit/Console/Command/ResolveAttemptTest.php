@@ -100,8 +100,10 @@ class ResolveAttemptTest extends TestCase
                 : null
         );
         $this->attempts->method('transition')->willReturnCallback(
-            function (string $id, array $from, State|string $to, array $set = []): bool {
+            function (string $id, array $from, State|string $to, array $set = [], array $conditions = []): bool {
                 $this->transitions[] = [$id, $from, $to, $set];
+                // Every resolution compares the last change it read, so an attempt that moved on stays as it is.
+                $this->assertSame(['updated_at' => $this->stored?->updatedAt], $conditions);
 
                 return $this->transitionResult;
             }

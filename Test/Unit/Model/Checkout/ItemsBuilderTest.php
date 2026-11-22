@@ -262,7 +262,7 @@ class ItemsBuilderTest extends TestCase
         $this->assertSame($cents, $rows[0]['unit_price']);
     }
 
-    public function testRoundingWithinOneCentPerRowIsLogged(): void
+    public function testRoundingWithinTheToleranceIsLogged(): void
     {
         $items = [
             $this->item(['sku' => 'A', 'price' => '33.3333', 'qty' => '1'], null),
@@ -271,7 +271,7 @@ class ItemsBuilderTest extends TestCase
         ];
         $this->logger->expects($this->once())
             ->method('info')
-            ->with($this->anything(), ['difference_cents' => -1, 'rows' => 3]);
+            ->with($this->anything(), ['difference_cents' => -1, 'rows' => 3, 'tolerance_cents' => 3]);
 
         $rows = $this->builder()->build($this->quote($items, '100.0000'));
 
@@ -287,7 +287,7 @@ class ItemsBuilderTest extends TestCase
         $this->builder()->build($this->quote([$item], '30'));
     }
 
-    public function testDifferenceAboveOneCentPerRowIsDeclined(): void
+    public function testDifferenceAboveTheToleranceIsDeclined(): void
     {
         $items = [
             $this->item(['sku' => 'A', 'price' => '10.0000', 'qty' => '1'], null),
@@ -296,7 +296,36 @@ class ItemsBuilderTest extends TestCase
 
         $exception = $this->assertDeclined($this->quote($items, '20.0300'), AccountingException::REASON_ITEMS_MISMATCH);
 
-        $this->assertSame(['difference_cents' => -3, 'rows' => 2], $exception->getDiagnostics());
+        $this->assertSame(
+            ['difference_cents' => -3, 'rows' => 2, 'tolerance_cents' => 2],
+            $exception->getDiagnostics()
+        );
+    }
+
+    public function testTaxInclusivePriceRoundingGrowsWithTheQuantity(): void
+    {
+        // 99.95 including 6 % tax, quantity 10: Magento keeps the row total 942.92 and sets the price to
+        // round(942.92 / 10) = 94.29, so the row is sent as 942.90, two cents off.
+        $item = $this->item(['sku' => 'A', 'price' => '94.29', 'qty' => '10'], null);
+        $this->logger->expects($this->once())
+            ->method('info')
+            ->with($this->anything(), ['difference_cents' => -2, 'rows' => 1, 'tolerance_cents' => 5]);
+
+        $rows = $this->builder()->build($this->quote([$item], '942.92'));
+
+        $this->assertSame(['sku' => 'A', 'unit_price' => 9429, 'qty' => 10], array_slice($rows[0], 1, 3));
+    }
+
+    public function testRoundingBeyondHalfACentPerUnitIsDeclined(): void
+    {
+        $item = $this->item(['sku' => 'A', 'price' => '94.29', 'qty' => '10'], null);
+
+        $exception = $this->assertDeclined($this->quote([$item], '942.96'), AccountingException::REASON_ITEMS_MISMATCH);
+
+        $this->assertSame(
+            ['difference_cents' => -6, 'rows' => 1, 'tolerance_cents' => 5],
+            $exception->getDiagnostics()
+        );
     }
 
     public function testVirtualQuoteComparesWithTheBillingSubtotal(): void
@@ -433,7 +462,7 @@ class ItemsBuilderTest extends TestCase
         ];
         $this->logger->expects($this->once())
             ->method('info')
-            ->with($this->anything(), ['difference_cents' => -2, 'rows' => 2]);
+            ->with($this->anything(), ['difference_cents' => -2, 'rows' => 2, 'tolerance_cents' => 4]);
 
         $rows = $this->builder()->build($this->quote($items, '200.0000'));
 
@@ -450,7 +479,10 @@ class ItemsBuilderTest extends TestCase
 
         $exception = $this->assertDeclined($this->quote($items, '20.0300'), AccountingException::REASON_ITEMS_MISMATCH);
 
-        $this->assertSame(['difference_cents' => -3, 'rows' => 2], $exception->getDiagnostics());
+        $this->assertSame(
+            ['difference_cents' => -3, 'rows' => 2, 'tolerance_cents' => 2],
+            $exception->getDiagnostics()
+        );
     }
 
     public function testPlaceholderImagesAreNotSent(): void

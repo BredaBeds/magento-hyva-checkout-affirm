@@ -80,12 +80,6 @@
                 <label translate="true">Reserved Order #</label>
             </settings>
         </column>
-        <column name="order_increment_id" sortOrder="60">
-            <settings>
-                <filter>text</filter>
-                <label translate="true">Order #</label>
-            </settings>
-        </column>
         <column name="grand_total_cents" class="Hyva\CheckoutAffirm\Ui\Component\Listing\Column\GrandTotal" sortOrder="70">
             <settings>
                 <label translate="true">Grand Total</label>
@@ -95,12 +89,6 @@
             <settings>
                 <filter>text</filter>
                 <label translate="true">Currency</label>
-            </settings>
-        </column>
-        <column name="failure_reason" sortOrder="90">
-            <settings>
-                <filter>text</filter>
-                <label translate="true">Reason</label>
             </settings>
         </column>
         <column name="provider_transaction_id" sortOrder="100">

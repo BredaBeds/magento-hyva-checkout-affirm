@@ -18,12 +18,14 @@ use Hyva\CheckoutAffirm\Model\Attempt\State;
 use Hyva\CheckoutAffirm\Model\Checkout\AttemptRecovery;
 use Hyva\CheckoutAffirm\Model\Checkout\ConfirmationOutcome;
 use Hyva\CheckoutAffirm\Model\Checkout\ConfirmationPipeline;
+use Hyva\CheckoutAffirm\Model\Checkout\GuestCheckout;
 use Hyva\CheckoutAffirm\Model\Checkout\OrderPlacement;
 use Hyva\CheckoutAffirm\Model\Checkout\SuccessSession;
 use Hyva\CheckoutAffirm\Model\Checkout\VerificationResult;
 use Hyva\CheckoutAffirm\Model\Checkout\VerifierInterface;
 use InvalidArgumentException;
 use LogicException;
+use Magento\Checkout\Helper\Data as CheckoutHelper;
 use Magento\Framework\Event\ManagerInterface as EventManagerInterface;
 use Magento\Framework\Exception\LocalizedException;
 use Magento\Framework\Exception\NoSuchEntityException;
@@ -224,6 +226,13 @@ class ConfirmationPipelineTest extends TestCase
      */
     private ConfirmationPipeline $pipeline;
 
+    /**
+     * Whether the store allows guest checkout for the cart.
+     *
+     * @var bool
+     */
+    private bool $guestAllowed = true;
+
     protected function setUp(): void
     {
         $this->repository = $this->memoryRepository();
@@ -366,6 +375,9 @@ class ConfirmationPipelineTest extends TestCase
             });
         }
 
+        $guestHelper = $this->createMock(CheckoutHelper::class);
+        $guestHelper->method('isAllowedGuestCheckout')->willReturnCallback(fn (): bool => $this->guestAllowed);
+
         $stalePolicy = new StaleAttemptPolicy();
         $this->pipeline = new ConfirmationPipeline(
             $this->repository,
@@ -380,7 +392,8 @@ class ConfirmationPipelineTest extends TestCase
             $storeManager,
             $dateTime,
             $stalePolicy,
-            $logger
+            $logger,
+            new GuestCheckout($guestHelper)
         );
     }
 
@@ -589,6 +602,28 @@ class ConfirmationPipelineTest extends TestCase
 
         $this->assertFailedWith(Attempt::REASON_UNAVAILABLE, $outcome);
         $this->assertSame([], $this->verifyCalls);
+    }
+
+    public function testGuestCheckoutTheStoreForbidsFailsBeforeTheClaim(): void
+    {
+        $this->store(State::INITIATED);
+        $this->guestAllowed = false;
+
+        $outcome = $this->confirm($this->quote);
+
+        $this->assertFailedWith(Attempt::REASON_GUEST_NOT_ALLOWED, $outcome);
+        $this->assertSame('Please sign in or create an account to place this order.', $outcome->message);
+        $this->assertSame([], $this->verifyCalls);
+        $this->assertSame(0, $this->placementCalls);
+    }
+
+    public function testCustomerQuotesNeedNoGuestCheckout(): void
+    {
+        $this->store(State::INITIATED);
+        $this->guestAllowed = false;
+        $this->quote->setData('customer_id', 7);
+
+        $this->assertTrue($this->confirm($this->quote)->isPlaced());
     }
 
     public function testVerificationFailureFailsTheAttempt(): void

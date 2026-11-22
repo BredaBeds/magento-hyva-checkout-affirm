@@ -90,7 +90,7 @@ class EscalateStaleAttempts
     /**
      * Report what the run changed; informational only (a log that cannot be written must not fail the run).
      *
-     * @param array<string, int> $counts
+     * @param array<string,int> $counts
      * @return void
      */
     private function logSummary(array $counts): void

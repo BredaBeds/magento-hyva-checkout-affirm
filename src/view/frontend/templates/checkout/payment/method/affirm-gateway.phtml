@@ -6,24 +6,30 @@
  * the first tag, so nothing may precede it). The data attributes feed the hyvaCheckoutAffirmGateway Alpine
  * component, which renders Affirm's inline widget into the "inline" child; affirm.js owns that subtree.
  *
- * @var \Magento\Framework\View\Element\Template $block
- * @var \Magento\Framework\Escaper $escaper
- * @var \Hyva\Theme\Model\ViewModelRegistry $viewModels
- * @var \Hyva\CheckoutAffirm\Magewire\Payment\Method\AffirmGateway $magewire
+ * @var Template $block
+ * @var Escaper $escaper
+ * @var ViewModelRegistry $viewModels
+ * @var AffirmGateway $magewire
  */
-$method = $viewModels->require(\Hyva\CheckoutAffirm\ViewModel\Method::class);
+
+use Hyva\CheckoutAffirm\Magewire\Payment\Method\AffirmGateway;
+use Hyva\CheckoutAffirm\ViewModel\Method;
+use Hyva\Theme\Model\ViewModelRegistry;
+use Magento\Framework\Escaper;
+use Magento\Framework\View\Element\Template;
+
+$method = $viewModels->require(Method::class);
 $inlineCheckout = $magewire->inlineCheckout === null
     ? ''
     : (string) json_encode($magewire->inlineCheckout, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 $edu = $method->isEduEnabled();
 $iconUrl = $method->getIconUrl();
 $info = $method->getInfo();
-$infoTags = \Hyva\CheckoutAffirm\ViewModel\Method::INFO_ALLOWED_TAGS;
+$infoTags = Method::INFO_ALLOWED_TAGS;
 ?>
 <div wire:key="affirm-gateway"
      x-data="hyvaCheckoutAffirmGateway"
      class="hyva-affirm-gateway space-y-2 text-sm"
-     data-mode="<?= $escaper->escapeHtmlAttr($method->getMode()) ?>"
      data-edu="<?= $edu ? '1' : '0' ?>"
      data-inline-version="<?= (int) $magewire->inlineVersion ?>"
      data-inline-checkout="<?= $escaper->escapeHtmlAttr($inlineCheckout) ?>"

@@ -52,7 +52,6 @@ class Confirm implements HttpGetActionInterface, HttpPostActionInterface, CsrfAw
 
     private const SUCCESS_ROUTE = 'checkout/onepage/success';
     private const TOKEN_PARAMS = ['checkout_token', 'checkout_id'];
-    private const MAX_TOKEN_LENGTH = 512;
 
     /**
      * @param HttpRequest $request
@@ -151,7 +150,7 @@ class Confirm implements HttpGetActionInterface, HttpPostActionInterface, CsrfAw
 
     /**
      * @inheritdoc
-     * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+     * @SuppressWarnings("PHPMD.UnusedFormalParameter")
      */
     public function createCsrfValidationException(RequestInterface $request): ?InvalidRequestException
     {
@@ -163,7 +162,7 @@ class Confirm implements HttpGetActionInterface, HttpPostActionInterface, CsrfAw
      *
      * @param RequestInterface $request
      * @return bool|null
-     * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+     * @SuppressWarnings("PHPMD.UnusedFormalParameter")
      */
     public function validateForCsrf(RequestInterface $request): ?bool
     {
@@ -276,14 +275,17 @@ class Confirm implements HttpGetActionInterface, HttpPostActionInterface, CsrfAw
     /**
      * Token from the query or body (checkout_token; checkout_id as Affirm's alternative name).
      *
+     * Only a value with the shape of a token counts; anything else is never put back into a URL.
+     *
      * @return string
      */
     private function checkoutToken(): string
     {
         foreach (self::TOKEN_PARAMS as $name) {
             $value = $this->request->getParam($name);
-            if (is_string($value) && trim($value) !== '' && strlen($value) <= self::MAX_TOKEN_LENGTH) {
-                return trim($value);
+            $value = is_string($value) ? trim($value) : '';
+            if (Attempt::isValidToken($value)) {
+                return $value;
             }
         }
 

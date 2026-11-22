@@ -5,22 +5,33 @@
  * Affirm in Hyvä Checkout's payment API (registerMethod) and the hyvaCheckoutAffirmGateway Alpine component of the
  * method body. Rendered once per checkout page in hyva.checkout.api-v1.payment-methods.
  *
- * Place Order: prepareCheckout() on the Magewire component, then Affirm's modal (the token goes to Hyvä's
- * "payment" storage group and Hyvä's own placement runs the server confirmation) or Affirm's redirect (the
+ * Place Order: a POST to the prepare controller (a plain request, so it works on every checkout step: the method's
+ * Magewire component exists only on the step with the payment method list), then Affirm's modal (the token goes to
+ * Hyvä's "payment" storage group and Hyvä's own placement runs the server confirmation) or Affirm's redirect (the
  * return controller confirms). Placement is never retried; only affirm.js may be requested again.
  *
- * @var \Magento\Framework\View\Element\Template $block
- * @var \Magento\Framework\Escaper $escaper
- * @var \Hyva\Theme\ViewModel\HyvaCsp $hyvaCsp
+ * @var Template $block
+ * @var Escaper $escaper
+ * @var HyvaCsp $hyvaCsp
  */
+
+use Hyva\CheckoutAffirm\Controller\Checkout\Prepare;
+use Hyva\CheckoutAffirm\Magewire\Payment\Method\AffirmGateway;
+use Hyva\CheckoutAffirm\Model\Magewire\Payment\PlaceOrderService;
+use Hyva\CheckoutAffirm\ViewModel\Method;
+use Hyva\Theme\ViewModel\HyvaCsp;
+use Magento\Framework\Escaper;
+use Magento\Framework\View\Element\Template;
+
 $config = [
-    'code' => \Hyva\CheckoutAffirm\Magewire\Payment\Method\AffirmGateway::METHOD_CODE,
-    'componentId' => \Hyva\CheckoutAffirm\Magewire\Payment\Method\AffirmGateway::COMPONENT_ID,
-    'containerId' => \Hyva\CheckoutAffirm\ViewModel\Method::INLINE_CONTAINER_ID,
+    'code' => AffirmGateway::METHOD_CODE,
+    'componentId' => AffirmGateway::COMPONENT_ID,
+    'containerId' => Method::INLINE_CONTAINER_ID,
+    'prepareUrl' => $block->getUrl(Prepare::ROUTE, ['_secure' => true]),
     'storage' => [
         'group' => 'payment',
-        'token' => \Hyva\CheckoutAffirm\Model\Magewire\Payment\PlaceOrderService::KEY_CHECKOUT_TOKEN,
-        'attempt' => \Hyva\CheckoutAffirm\Model\Magewire\Payment\PlaceOrderService::KEY_ATTEMPT_ID,
+        'token' => PlaceOrderService::KEY_CHECKOUT_TOKEN,
+        'attempt' => PlaceOrderService::KEY_ATTEMPT_ID,
     ],
     'messages' => [
         'unavailable' => (string) __(
@@ -53,13 +64,15 @@ $json = json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_
     const INLINE_DELAY = 150;
     // Redirect mode waits for the navigation to Affirm; this long without leaving, the shopper gets the button back.
     const REDIRECT_TIMEOUT = 60000;
+    // The prepare request; a stalled one gives the button back instead of keeping Place Order busy.
+    const PREPARE_TIMEOUT = 30000;
 
     /* bridge:start */
-    // Magewire 1 (Livewire 2) and Magewire 3 both return the component's $wire proxy from Magewire.find(): actions
-    // are called as methods and public properties read as properties. Magewire 1 throws for a component that is
-    // not on the page and answers an unknown property with a server-call function, which reads never call.
-    // Hyvä Checkout 3 adds hyvaCheckout.misc.call(): a plain Magewire 3 action call never settles when its request
-    // fails, misc.call() rejects instead, so Place Order cannot hang. Older releases have no misc.call().
+    // Actions of the method's Magewire component (the inline widget). Magewire 1 (Livewire 2) and Magewire 3 both
+    // return the component's $wire proxy from Magewire.find(), with actions as methods; Magewire 1 throws for a
+    // component that is not on the page. Hyvä Checkout 3 adds hyvaCheckout.misc.call() (marked @internal; re-check
+    // it on Checkout updates): a plain Magewire 3 action call never settles when its request fails, misc.call()
+    // rejects instead. Older releases have no misc.call().
     const createWireBridge = (getMagewire, componentId, getMisc = () => null) => {
         const find = () => {
             try {
@@ -69,13 +82,6 @@ $json = json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_
                 return null;
             }
         };
-        const read = (wire, property) => {
-            let value = wire[property];
-            if (typeof value === 'function') {
-                value = typeof wire.get === 'function' ? wire.get(property) : undefined;
-            }
-            return value === undefined || typeof value === 'function' ? null : value;
-        };
         const call = async (method) => {
             const wire = find();
             if (!wire || typeof wire[method] !== 'function') {
@@ -83,9 +89,8 @@ $json = json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_
             }
             const misc = getMisc();
             await (misc && typeof misc.call === 'function' ? misc.call(wire, method) : wire[method]());
-            return (property) => read(wire, property);
         };
-        return {find, read, call};
+        return {call};
     };
     /* bridge:end */
 
@@ -93,8 +98,23 @@ $json = json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_
     const components = new Set();
     let active = false;
 
-    const notify = (text, type) => hyvaCheckout.payment.dispatchExceptionMessage(text, type || 'error');
-    const clearNotice = () => hyvaCheckout.payment.dispatchSuccessMessage('');
+    // The payment messenger lives with the payment method list. Place Order on a later step (Hyvä's mobile checkout:
+    // payment, then summary) has none, so the message goes to Hyvä's page messages there.
+    const methodListShown = () => !!document.querySelector('[wire\\:id="checkout.payment.methods"]');
+    const notify = (text, type) => {
+        if (methodListShown() || typeof window.dispatchMessages !== 'function') {
+            hyvaCheckout.payment.dispatchExceptionMessage(text, type || 'error');
+        } else {
+            window.dispatchMessages([{type: type || 'error', text}]);
+        }
+    };
+    // Clears this method's message: Hyvä's messenger resets on the payment success event. Dispatched directly, as
+    // dispatchSuccessMessage() would put "Something went wrong" in the event for any other listener.
+    const clearNotice = () => {
+        const event = (hyvaCheckout.payment.config && hyvaCheckout.payment.config.browserEventSuccess)
+            || 'payment:method:success';
+        window.dispatchEvent(new CustomEvent(event, {detail: {}}));
+    };
 
     // Affirm's modal takes the focus; give it back to the control that started the payment once Hyvä has
     // re-enabled it, unless the shopper already moved on.
@@ -163,6 +183,32 @@ $json = json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_
             return plainObject(JSON.parse(json));
         } catch (e) {
             return null;
+        }
+    };
+
+    // Place Order's server step. Resolves with {checkout, attemptId, mode} or {error: shopper message} (also sent with
+    // a refused form key); rejects when the request fails, answers anything else or takes longer than PREPARE_TIMEOUT.
+    const prepare = async () => {
+        const abort = new AbortController();
+        const timer = setTimeout(() => abort.abort(), PREPARE_TIMEOUT);
+        try {
+            const response = await fetch(config.prepareUrl, {
+                method: 'POST',
+                body: new URLSearchParams({form_key: window.hyva.getFormKey()}),
+                headers: {'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
+                credentials: 'same-origin',
+                signal: abort.signal,
+            });
+            const body = plainObject(await response.json().catch(() => null));
+            if (body && typeof body.error === 'string' && body.error !== '') {
+                return body;
+            }
+            if (!response.ok || !body) {
+                throw new Error(`The prepare request failed with HTTP ${response.status}.`);
+            }
+            return body;
+        } finally {
+            clearTimeout(timer);
         }
     };
 
@@ -271,7 +317,12 @@ $json = json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_
         }
     };
 
-    hyvaCheckout.payment.registerMethod({
+    // Registered once Hyvä's API is ready (hyvaCheckout.api.after(), absent before some 1.x releases).
+    const afterApi = (callback) => (hyvaCheckout.api && typeof hyvaCheckout.api.after === 'function'
+        ? hyvaCheckout.api.after(callback)
+        : callback());
+
+    afterApi(() => hyvaCheckout.payment.registerMethod({
         code: config.code,
         method: {
             async initialize() {
@@ -292,18 +343,17 @@ $json = json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_
                 clearNotice();
                 await clearStorage();
 
-                let read;
+                let prepared;
                 try {
-                    read = await bridge.call('prepareCheckout');
+                    prepared = await prepare();
                 } catch (e) {
                     throw failure(messages.unavailable, focus);
                 }
-                const errorMessage = read('errorMessage');
-                if (errorMessage) {
-                    throw failure(String(errorMessage), focus);
+                if (typeof prepared.error === 'string' && prepared.error !== '') {
+                    throw failure(prepared.error, focus);
                 }
-                const checkout = plainObject(read('checkout'));
-                const attemptId = read('attemptId');
+                const checkout = plainObject(prepared.checkout);
+                const attemptId = prepared.attemptId;
                 if (!checkout || typeof attemptId !== 'string' || attemptId === '') {
                     throw failure(messages.unavailable, focus);
                 }
@@ -315,7 +365,7 @@ $json = json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_
                     throw failure(messages.sdk, focus);
                 }
 
-                if (read('mode') === 'redirect') {
+                if (prepared.mode === 'redirect') {
                     return openRedirect(affirm, checkout, focus);
                 }
 
@@ -341,7 +391,7 @@ $json = json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_
                 }
             },
         },
-    });
+    }));
 
     // Method body: renders Affirm's inline widget from the root's data-inline-* attributes, which Magewire updates
     // after every rebuild. Bursts are coalesced and a version older than the one shown is ignored.
@@ -440,7 +490,11 @@ $json = json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_
         };
     };
 
-    const registerComponent = () => window.Alpine.data('hyvaCheckoutAffirmGateway', gateway);
+    // A global constructor, so a theme can wrap or replace it (Hyvä's convention); Alpine looks it up each time a
+    // component starts.
+    window.hyvaCheckoutAffirmGateway = gateway;
+    const construct = (...args) => window.hyvaCheckoutAffirmGateway(...args);
+    const registerComponent = () => window.Alpine.data('hyvaCheckoutAffirmGateway', construct);
     if (window.Alpine && typeof window.Alpine.data === 'function') {
         registerComponent();
     } else {

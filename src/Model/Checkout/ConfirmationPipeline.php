@@ -27,10 +27,10 @@ use UnexpectedValueException;
 /**
  * Turns a checkout token Affirm returned for an attempt into an order, at most once.
  *
- * Order of work: resolve the attempt and its owner; re-check the cart (snapshot) and the payment method's
- * availability; verify the checkout at Affirm (nothing is written before it except failure states); confirm the
- * attempt with the token hash; claim it (confirmed -> placing); only the claim winner writes the token onto the
- * quote payment and places the order through Magento's standard placement. Every state change is a
+ * Order of work: resolve the attempt and its owner; re-check the cart (snapshot), the payment method's
+ * availability and guest checkout; verify the checkout at Affirm (nothing is written before it except failure
+ * states); confirm the attempt with the token hash; claim it (confirmed -> placing); only the claim winner writes
+ * the token onto the quote payment and places the order through Magento's standard placement. Every state change is a
  * compare-and-swap, so concurrent returns, refreshes and duplicate callbacks place one order.
  *
  * Messages are shopper-safe; logs carry reason codes and the order reference, never the token or attempt id.
@@ -64,6 +64,7 @@ class ConfirmationPipeline implements ConfirmationPipelineInterface
      * @param DateTime $dateTime
      * @param StaleAttemptPolicy $stalePolicy
      * @param LoggerInterface $logger
+     * @param GuestCheckout $guestCheckout
      */
     public function __construct(
         private readonly AttemptRepositoryInterface $attempts,
@@ -78,7 +79,8 @@ class ConfirmationPipeline implements ConfirmationPipelineInterface
         private readonly StoreManagerInterface $storeManager,
         private readonly DateTime $dateTime,
         private readonly StaleAttemptPolicy $stalePolicy,
-        private readonly LoggerInterface $logger
+        private readonly LoggerInterface $logger,
+        private readonly GuestCheckout $guestCheckout
     ) {
     }
 
@@ -138,6 +140,10 @@ class ConfirmationPipeline implements ConfirmationPipelineInterface
         }
         if (!$this->isAvailable($quote)) {
             return $this->fail($attempt, Attempt::REASON_UNAVAILABLE);
+        }
+        if (!$this->guestCheckout->isAllowed($quote)) {
+            // Before the claim, so a store that forbids guest checkout never gets a guest order from a return.
+            return $this->fail($attempt, Attempt::REASON_GUEST_NOT_ALLOWED);
         }
 
         $verification = $this->verifier->verify($attempt, $checkoutToken);
@@ -719,6 +725,8 @@ class ConfirmationPipeline implements ConfirmationPipelineInterface
                 return (string) __('Your cart changed during the Affirm payment. Please start the payment again.');
             case Attempt::REASON_UNAVAILABLE:
                 return (string) __('Affirm is not available for this order. Please choose another payment method.');
+            case Attempt::REASON_GUEST_NOT_ALLOWED:
+                return (string) __('Please sign in or create an account to place this order.');
             case Attempt::REASON_SUPERSEDED:
                 return (string) __('This Affirm payment was replaced by a newer one. Please start the payment again.');
             case Attempt::REASON_RESOLVED_PLACED:

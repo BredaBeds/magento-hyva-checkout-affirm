@@ -38,7 +38,7 @@ class ContactBuilder
      * Shipping and billing contacts.
      *
      * @param Quote $quote
-     * @return array{shipping: array<string, mixed>, billing: array<string, mixed>}
+     * @return array{shipping: array<string,mixed>, billing: array<string,mixed>}
      * @throws AccountingException
      */
     public function build(Quote $quote): array
@@ -82,7 +82,7 @@ class ContactBuilder
      * @param Address $address
      * @param string $email
      * @param string $type shipping|billing, for the log only
-     * @return array<string, mixed>
+     * @return array<string,mixed>
      * @throws AccountingException
      */
     private function contact(Address $address, string $email, string $type): array

@@ -101,7 +101,7 @@ class AttemptRecovery
      *
      * @param Attempt $attempt
      * @param list<State> $fromStates
-     * @param array<string, mixed> $conditions further compare-and-swap conditions
+     * @param array<string,mixed> $conditions further compare-and-swap conditions
      * @return bool whether this call moved the attempt
      */
     public function markUncertain(Attempt $attempt, array $fromStates, array $conditions = []): bool
@@ -156,7 +156,7 @@ class AttemptRecovery
      *
      * @param Attempt $attempt
      * @param OrderInterface $order
-     * @param array<string, mixed> $conditions
+     * @param array<string,mixed> $conditions
      * @return bool whether this call moved the attempt
      */
     private function linkOrder(Attempt $attempt, OrderInterface $order, array $conditions): bool

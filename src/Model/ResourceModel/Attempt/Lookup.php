@@ -103,7 +103,7 @@ class Lookup
     /**
      * Database rows to attempts.
      *
-     * @param array<int, array<string, mixed>> $rows
+     * @param array<int,array<string,mixed>> $rows
      * @return list<Attempt>
      */
     private function toAttempts(array $rows): array

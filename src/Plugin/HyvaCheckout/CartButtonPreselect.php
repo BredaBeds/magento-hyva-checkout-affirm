@@ -117,7 +117,7 @@ class CartButtonPreselect
      * @param MethodList $subject
      * @param string $value
      * @return void
-     * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+     * @SuppressWarnings("PHPMD.UnusedFormalParameter")
      */
     public function beforeUpdatedMethod(MethodList $subject, string $value): void
     {
@@ -148,7 +148,7 @@ class CartButtonPreselect
                 // SessionManager forwards uns*() calls to the session storage.
                 $this->checkoutSession->unsetData(self::SESSION_KEY); // @phpstan-ignore method.notFound
             }
-        } catch (\Throwable) {
+        } catch (\Throwable) { // phpcs:ignore Magento2.CodeAnalysis.EmptyBlock
             // Nothing to forget without a session.
         }
     }
@@ -200,12 +200,15 @@ class CartButtonPreselect
     private function isOwnUpdateRequest(MethodList $component): bool
     {
         $this->magewire3 ??= class_exists(self::MAGEWIRE3_MARKER);
+        // The guards below are for Magewire 1, whose component API PHPStan does not see when Magewire 3 is installed.
+        // @phpstan-ignore function.alreadyNarrowedType
         if ($this->magewire3 || !method_exists($component, 'getRequest')) {
             return false;
         }
 
         $request = $component->getRequest();
 
+        // @phpstan-ignore function.alreadyNarrowedType, function.alreadyNarrowedType (is_object, method_exists)
         return is_object($request) && method_exists($request, 'isSubsequent') && $request->isSubsequent() === true;
     }
 }

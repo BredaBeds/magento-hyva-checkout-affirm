@@ -54,7 +54,7 @@ class Snapshot implements SnapshotInterface
      * differently between two calls).
      *
      * @param Quote $quote
-     * @return array<string, mixed>
+     * @return array<string,mixed>
      */
     public function collect(Quote $quote): array
     {
@@ -89,7 +89,7 @@ class Snapshot implements SnapshotInterface
      * Items (parents and children), sorted so collection order does not matter.
      *
      * @param Quote $quote
-     * @return list<array<string, int|string|null>>
+     * @return list<array<string,int|string|null>>
      */
     private function items(Quote $quote): array
     {
@@ -118,7 +118,7 @@ class Snapshot implements SnapshotInterface
      * Address fields Affirm receives.
      *
      * @param DataObject $address
-     * @return array<string, int|string|null>
+     * @return array<string,int|string|null>
      */
     private function address(DataObject $address): array
     {
